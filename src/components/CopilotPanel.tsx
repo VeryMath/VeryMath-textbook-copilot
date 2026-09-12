@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Video, Waypoints, X, LoaderCircle, ArrowUpRight, AlertCircle, History } from 'lucide-react';
-import type { Artifact, Book, Chapter, KnowledgeGraphDetail, Message, Scope, SkillId, SkillInfo } from '../lib/types';
+import type { Artifact, Book, Chapter, CourseReference, KnowledgeGraphDetail, Message, Scope, SkillId, SkillInfo } from '../lib/types';
 import Markdown from './Markdown';
 import './slide-template-picker.css';
 
@@ -16,9 +16,10 @@ const tools = [
 ] as const;
 
 interface Props {
+  references: CourseReference[]; referenceQuestionId: number; onRemoveReference: (id: string) => void;
   book: Book; page: number; chapter?: Chapter; selectedText: string; onClearSelection: () => void;
   contextArtifact?: Artifact; onClearArtifact: () => void;
-  skills: SkillInfo[]; messages: Message[]; busy: boolean; onSend: (id: SkillId, prompt: string, scope: Scope, knowledgeGraphDetail?: KnowledgeGraphDetail, templateId?: string) => void;
+  skills: SkillInfo[]; messages: Message[]; busy: boolean; running: boolean; onSend: (id: SkillId, prompt: string, scope: Scope, knowledgeGraphDetail?: KnowledgeGraphDetail, templateId?: string) => void;
   onStop: () => void; onReset: () => void; onHistory: () => void; onArtifact: (artifact: Artifact) => void; onSettings: () => void;
 }
 
@@ -38,6 +39,13 @@ export default function CopilotPanel(props: Props) {
   const structureScope = activeSkill === 'mindmap' || activeSkill === 'knowledge-graph';
   const currentScope = structureScope && scope === 'page' ? 'section'
     : !structureScope && scope === 'section' ? 'page' : scope;
+  const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].includes(activeSkill)
+    || ['slides', 'mindmap', 'knowledge-graph', 'video'].includes(contextArtifact?.kind || '');
+
+  useEffect(() => {
+    if (!props.referenceQuestionId) return;
+    setActiveSkill('chat'); setScope('page'); setToolsOpen(false); input.current?.focus();
+  }, [props.referenceQuestionId]);
 
   useEffect(() => { if (selectedText) setScope('selection'); else setScope(current => current === 'selection' ? 'page' : current); }, [selectedText]);
   useEffect(() => {
@@ -92,6 +100,7 @@ export default function CopilotPanel(props: Props) {
         </div>
       </div> : <div className="messages" aria-live="polite">{messages.map(message => <article key={message.id} className={`message message-${message.role}`}>
         {message.role === 'assistant' && <div className="message-name"><Sparkles size={14}/> Copilot</div>}
+        {message.references?.length ? <div className="message-references">{message.references.map(reference => <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer"><FileText size={12}/>{reference.title}</a>)}</div> : null}
         {message.content && <Markdown book={book}>{message.content}</Markdown>}
         {message.status === 'running' && <div className="message-progress"><LoaderCircle size={14} className="spin"/>{message.progress || '正在处理…'}</div>}
         {(message.status === 'error' || message.status === 'stopped') && <div className="message-error"><AlertCircle size={15}/><span>{message.progress || '暂时无法完成，请稍后重试。'}</span></div>}
@@ -101,6 +110,10 @@ export default function CopilotPanel(props: Props) {
     </div>
 
     <div className="composer-area">
+      {props.references.length > 0 && <div className="composer-references" aria-label="本轮参考的教材与资料">
+        <span title={book.title}>教材</span>
+        {!textbookTask && <span title={props.references.map(reference => reference.title).join('\n')}>{props.references.length} 份资料</span>}
+      </div>}
       {contextArtifact && <div className="selection-context artifact-context"><FileSliders size={14}/><span title={contextArtifact.title}>正在讨论：{contextArtifact.title}</span><button className="icon-button" onClick={props.onClearArtifact} aria-label="清除资料上下文"><X size={14}/></button></div>}
       {selectedText && <div className="selection-context"><Quote size={14}/><span>{selectedText}</span><button className="icon-button" onClick={props.onClearSelection} aria-label="清除选中内容"><X size={14}/></button></div>}
       <div className="composer">
@@ -116,7 +129,7 @@ export default function CopilotPanel(props: Props) {
           <option value="book">整本教材</option><option value="selection" disabled={!selectedText}>选中内容</option>
         </select><ChevronDown size={12}/></label></div>
         <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder={activeSkill === 'chat' ? '关于这本教材，你想了解什么？' : '补充你的要求…'} aria-label="向 Copilot 输入要求" rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
-        <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{busy ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={!prompt.trim()} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
+        <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{props.running ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={busy || !prompt.trim()} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
       </div>
       <button className="connection-note" onClick={props.onSettings}><span className={`status-dot ${connectedCount ? 'online' : ''}`}/>{connectedCount ? `${connectedCount} 个工具已连接` : '学习工具待接入'}<span>查看连接<ArrowUpRight size={11}/></span></button>
     </div>

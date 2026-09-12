@@ -7,12 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { normalizeMindmapNode } from '../shared/mindmap-text.mjs';
 import { validateKnowledgeGraph } from '../skills/knowledge-graph/scripts/validate-knowledge-graph.mjs';
 import { slideTemplates } from './slide-templates.mjs';
+import { extractReferenceText, searchReferenceText } from './reference-text.mjs';
 
 const configuredHome = process.env.COURSE_COPILOT_HOME || resolve(homedir(), '.course-copilot');
 let directory = resolve(configuredHome.replace(/^~(?=\/|$)/, homedir()));
 let initialization;
 const writes = new Map();
 const generationSnapshots = new Map();
+const referenceExtractions = new Map();
+let referenceExtractionQueue = Promise.resolve();
 const pdfLimit = 100 * 1024 * 1024;
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
@@ -274,6 +277,190 @@ export async function getCoursePaths(id) {
     courseDir, totalPages, textbookPath: await safePath(courseDir, 'textbook.pdf'),
     textbookDir: await safePath(courseDir, 'textbook'), outputsDir: await safePath(courseDir, 'outputs'),
   };
+}
+
+const referenceExtensions = new Set(['.pdf', '.txt', '.md', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.webp']);
+const referenceLimit = 100 * 1024 * 1024;
+function referenceDirectoryName(id) {
+  if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)) fail(400, '辅助资料编号无效。');
+  return id;
+}
+function referenceInfo(courseId, metadata) {
+  const job = referenceExtractions.get(`${courseId}/${metadata.id}`);
+  const textIndex = job ? { status: job.status, processedPages: job.processedPages, totalPages: job.totalPages }
+    : metadata.textIndex || { status: 'pending' };
+  return { ...metadata, textIndex, url: `/api/courses/${encodeURIComponent(courseId)}/references/${metadata.id}/file` };
+}
+async function referenceRecord(record, referenceId) {
+  const path = await safePath(record.courseDir, 'references', referenceDirectoryName(referenceId));
+  const metadata = await readJson(resolve(path, 'metadata.json'));
+  if (!metadata) fail(404, '没有找到这份辅助资料。');
+  if (metadata.id !== referenceId || typeof metadata.filename !== 'string'
+      || basename(metadata.filename) !== metadata.filename || metadata.filename.includes('\\')
+      || !referenceExtensions.has(extname(metadata.filename).toLowerCase())) fail(400, '辅助资料记录格式不正确。');
+  return { path, metadata };
+}
+
+export async function listReferences(id) {
+  const record = await courseRecord(id);
+  const directory = await safePath(record.courseDir, 'references');
+  const entries = await readdir(directory, { withFileTypes: true }).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const references = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^[a-f0-9-]{36}$/.test(entry.name)) continue;
+    try {
+      const { metadata } = await referenceRecord(record, entry.name);
+      references.push(referenceInfo(id, metadata));
+    } catch (error) { if (error.status !== 404 && error.code !== 'ENOENT') throw error; }
+  }
+  return references.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+export async function importReference(id, stream, filename) {
+  const record = await courseRecord(id);
+  const name = basename(filename.replace(/\\/g, '/')).replace(/[\x00-\x1f]/g, '').trim();
+  if (!name || Buffer.byteLength(name) > 220 || !referenceExtensions.has(extname(name).toLowerCase())) {
+    fail(400, '请选择 PDF、TXT、Markdown、DOCX、PPTX 或 PNG、JPEG、WebP 图片，文件名最多 220 字节。');
+  }
+  return serial(id, async () => {
+    const referenceId = randomUUID();
+    const path = await makeDirectory(record.courseDir, 'references', referenceId);
+    let handle;
+    try {
+      handle = await open(resolve(path, name), 'wx', 0o600);
+      let size = 0;
+      let prefix = Buffer.alloc(0);
+      for await (const chunk of stream.iterator({ destroyOnReturn: false })) {
+        size += chunk.length;
+        if (size > referenceLimit) fail(413, '单份辅助资料最大 100 MiB（104857600 字节）。');
+        if (prefix.length < 5) prefix = Buffer.concat([prefix, chunk.subarray(0, 5 - prefix.length)]);
+        await handle.writeFile(chunk);
+      }
+      if (!size) fail(400, '辅助资料文件为空。');
+      if (extname(name).toLowerCase() === '.pdf' && prefix.toString('ascii') !== '%PDF-') fail(400, '请上传有效的 PDF 文件。');
+      await handle.close(); handle = undefined;
+      const metadata = { id: referenceId, title: name, filename: name, description: '', size,
+        format: extname(name).slice(1).toLowerCase(), createdAt: new Date().toISOString() };
+      await writeJson(resolve(path, 'metadata.json'), metadata);
+      return referenceInfo(id, metadata);
+    } catch (error) {
+      stream.resume();
+      await handle?.close().catch(() => {});
+      await rm(path, { recursive: true, force: true });
+      throw error;
+    }
+  });
+}
+
+export async function updateReference(id, referenceId, value) {
+  if (!object(value) || Object.keys(value).some(key => !['title', 'description'].includes(key))
+      || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 200
+      || typeof value.description !== 'string' || value.description.length > 2000) fail(400, '请填写资料名称（最多 200 字符）和说明（最多 2000 字符）。');
+  const record = await courseRecord(id);
+  return serial(id, async () => {
+    const { path, metadata } = await referenceRecord(record, referenceId);
+    const updated = { ...metadata, title: value.title.trim(), description: value.description.trim() };
+    await writeJson(resolve(path, 'metadata.json'), updated);
+    return referenceInfo(id, updated);
+  });
+}
+
+export async function deleteReference(id, referenceId) {
+  const record = await courseRecord(id);
+  return serial(id, async () => {
+    if (generationSnapshots.get(id)?.size) fail(409, 'Agent 正在使用这门课程的资料，请在任务结束后删除。');
+    const { path } = await referenceRecord(record, referenceId);
+    referenceExtractions.get(`${id}/${referenceId}`)?.controller.abort();
+    await rm(path, { recursive: true });
+    return { deleted: true };
+  });
+}
+
+export async function getReferenceFile(id, referenceId) {
+  const record = await courseRecord(id);
+  const { path, metadata } = await referenceRecord(record, referenceId);
+  const file = await safePath(path, metadata.filename);
+  if (!(await stat(file)).isFile()) fail(404, '辅助资料文件不存在。');
+  return { path: file, filename: metadata.filename };
+}
+
+export async function getCourseReferences(id, referenceIds) {
+  const available = await listReferences(id);
+  const references = referenceIds === undefined ? available : [...new Set(referenceIds)].map(referenceId => {
+    const item = available.find(reference => reference.id === referenceId);
+    if (!item) fail(404, '所选辅助资料已删除或属于其他课程，请重新选择。');
+    return item;
+  });
+  return Promise.all(references.map(async item => {
+    const file = await getReferenceFile(id, item.id);
+    const textPath = await safePath(dirname(file.path), 'text.json');
+    return { ...item, path: file.path, ...((await stat(textPath).catch(() => null))?.isFile() ? { textPath } : {}) };
+  }));
+}
+
+export async function startReferenceExtraction(id, referenceId, ocr = false) {
+  const record = await courseRecord(id);
+  return serial(id, async () => {
+    const { path, metadata } = await referenceRecord(record, referenceId);
+    const key = `${id}/${referenceId}`;
+    if (referenceExtractions.has(key)) return referenceInfo(id, metadata);
+    const job = { status: 'queued', processedPages: 0, totalPages: 0, controller: new AbortController() };
+    referenceExtractions.set(key, job);
+    const run = async () => {
+      const signal = job.controller.signal;
+      try {
+        signal.throwIfAborted();
+        job.status = 'processing';
+        const file = await safePath(path, metadata.filename);
+        const index = await extractReferenceText({ path: file, format: metadata.format, ocr, signal,
+          onProgress: (processed, total) => { job.processedPages = processed; job.totalPages = total; } });
+        await serial(id, async () => {
+          signal.throwIfAborted();
+          const current = await referenceRecord(record, referenceId);
+          await writeJson(resolve(current.path, 'text.json'), index);
+          await writeJson(resolve(current.path, 'metadata.json'), { ...current.metadata,
+            textIndex: { status: 'ready', totalPages: index.pages.length, needsOcr: index.needsOcr,
+              message: index.warnings.slice(0, 5).join(' '), extractedAt: index.extractedAt } });
+        });
+      } catch (error) {
+        if (!signal.aborted) await serial(id, async () => {
+          if (signal.aborted) return;
+          const current = await referenceRecord(record, referenceId);
+          await writeJson(resolve(current.path, 'metadata.json'), { ...current.metadata,
+            textIndex: { ...current.metadata.textIndex, status: 'error', message: error.message } });
+        }).catch(error => console.error('辅助资料提取结果保存失败：', error.message));
+      } finally { if (referenceExtractions.get(key) === job) referenceExtractions.delete(key); }
+    };
+    referenceExtractionQueue = referenceExtractionQueue.catch(() => {}).then(run);
+    return referenceInfo(id, metadata);
+  });
+}
+
+export async function searchReferences(id, query) {
+  if (typeof query !== 'string' || !query.trim() || query.length > 160) fail(400, '请输入 1 至 160 个字符的搜索文字。');
+  const record = await courseRecord(id);
+  const references = await listReferences(id);
+  const hits = [];
+  let total = 0, indexing = false, indexedDocuments = 0;
+  for (const reference of references) {
+    if (reference.textIndex.status === 'pending') {
+      await startReferenceExtraction(id, reference.id); indexing = true;
+    } else if (['queued', 'processing'].includes(reference.textIndex.status)) indexing = true;
+    const { path } = await referenceRecord(record, reference.id);
+    const index = await readJson(resolve(path, 'text.json'));
+    if (!index) continue;
+    indexedDocuments++;
+    for (const hit of searchReferenceText(index, query)) {
+      total++;
+      if (hits.length < 100) hits.push({ ...hit, referenceId: reference.id, title: reference.title,
+        location: hit.slide ? `第 ${hit.slide} 张幻灯片` : hit.paragraph ? `第 ${hit.paragraph} 段` : reference.format === 'pdf' ? `PDF 第 ${hit.page} 页` : '图片',
+        url: reference.url + (reference.format === 'pdf' && hit.page ? `#page=${hit.page}` : '') });
+    }
+  }
+  return { query: query.trim(), hits, total, indexing, indexedDocuments, totalDocuments: references.length };
 }
 
 function outputRelative(filename) {

@@ -69,6 +69,10 @@ function checkRequest(request) {
   if (request.templateId !== undefined && !slideTemplates.some(template => template.id === request.templateId)) {
     throw new HttpError(400, '请选择白底深蓝、米白宋体或蓝色标题栏模板。');
   }
+  if (request.referenceIds !== undefined && (!Array.isArray(request.referenceIds) || request.referenceIds.length > 50
+      || request.referenceIds.some(id => typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)))) {
+    throw new HttpError(400, '请选择当前课程的辅助资料，每次最多 50 份。');
+  }
 }
 
 async function writeEvent(res, event, signal) {

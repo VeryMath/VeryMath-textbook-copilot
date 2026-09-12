@@ -55,6 +55,15 @@ export default function Markdown({ children, book }: { children: string; book?: 
     try { path = decodeURIComponent(ending < 0 ? value : value.slice(0, ending)); }
     catch { return value; }
     if (path === `${book.directory}/textbook.pdf`) return `${book.url}${suffix}`;
+    const referencePrefix = `${book.directory}/references/`;
+    const reference = path.startsWith(referencePrefix) ? path.slice(referencePrefix.length)
+      : path.startsWith('references/') ? path.slice('references/'.length)
+      : path.startsWith('./references/') ? path.slice('./references/'.length) : undefined;
+    if (reference !== undefined) {
+      const parts = reference.split('/');
+      if (parts.length !== 2 || !/^[a-f0-9-]{36}$/.test(parts[0]) || !parts[1] || parts[1] === '.' || parts[1] === '..') return undefined;
+      return `/api/courses/${encodeURIComponent(book.id)}/references/${parts[0]}/file${suffix}`;
+    }
     const outputs = `${book.directory}/outputs/`;
     const relative = path.startsWith(outputs) ? path.slice(outputs.length) : path.startsWith('outputs/') ? path.slice(8) : path.startsWith('/') ? undefined : path.replace(/^\.\//, '');
     if (!relative) return value;

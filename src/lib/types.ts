@@ -74,6 +74,24 @@ export interface PersonalSettings {
   columnWidths?: { sidebar?: number; copilot?: number };
 }
 
+export interface CourseReference {
+  id: string;
+  title: string;
+  filename: string;
+  description: string;
+  size: number;
+  format: string;
+  createdAt: string;
+  url: string;
+  textIndex?: { status: 'pending' | 'queued' | 'processing' | 'ready' | 'error'; processedPages?: number; totalPages?: number; needsOcr?: boolean; message?: string; extractedAt?: string };
+}
+
+export interface ReferenceSearchResult {
+  query: string; total: number; indexing: boolean; indexedDocuments: number; totalDocuments: number;
+  hits: { referenceId: string; title: string; url: string; location: string; page?: number; slide?: number; paragraph?: number;
+    source: 'text' | 'ocr'; snippet: string; matchStart: number; matchLength: number }[];
+}
+
 export interface StorageInfo { directory: string; settings: PersonalSettings }
 
 export interface ReadingState {
@@ -107,6 +125,7 @@ export interface SkillRequest {
   knowledgeGraphDetail?: KnowledgeGraphDetail;
   templateId?: string;
   artifact?: Artifact;
+  referenceIds?: string[];
   history: { role: 'user' | 'assistant'; content: string }[];
 }
 
@@ -141,6 +160,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  references?: Pick<CourseReference, 'id' | 'title' | 'url'>[];
   skillId?: SkillId;
   status?: 'running' | 'done' | 'error' | 'stopped';
   progress?: string;

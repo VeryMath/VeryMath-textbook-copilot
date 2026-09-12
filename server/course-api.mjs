@@ -4,7 +4,8 @@ import { extname } from 'node:path';
 import {
   getStorageInfo, updateSettings, listCourses, importCourse, getState, saveState,
   updateTextbook, savePage, resolveCourseFile, listConversations, getConversation, migrateState,
-  updateMindmapNode,
+  updateMindmapNode, listReferences, importReference, updateReference, deleteReference, getReferenceFile,
+  startReferenceExtraction, searchReferences,
 } from './course-store.mjs';
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
@@ -45,15 +46,21 @@ function body(req) {
   });
 }
 
-async function serveFile(req, res, path) {
+async function serveFile(req, res, path, filename) {
   const info = await stat(path);
   const types = { '.pdf': 'application/pdf', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mp3': 'audio/mpeg',
     '.wav': 'audio/wav', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
     '.svg': 'image/svg+xml', '.json': 'application/json; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
     '.md': 'text/plain; charset=utf-8', '.tex': 'text/plain; charset=utf-8', '.zip': 'application/zip',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
   const headers = { 'Content-Type': types[extname(path).toLowerCase()] || 'application/octet-stream',
     'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' };
+  if (filename) {
+    const disposition = /\.(pdf|txt|md|png|jpe?g|webp)$/i.test(filename) ? 'inline' : 'attachment';
+    headers['Content-Disposition'] = `${disposition}; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16)}`)}`;
+    headers['Content-Security-Policy'] = "sandbox; default-src 'none'";
+  }
   let start = 0;
   let end = info.size - 1;
   let status = 200;
@@ -101,6 +108,47 @@ export async function handleCourseApi(req, res) {
         json(res, 201, await importCourse(req, filename, url.searchParams.get('legacyId') ?? undefined));
       }
     } else {
+      const searchMatch = /^\/api\/courses\/([^/]+)\/references\/search$/.exec(path);
+      if (searchMatch) {
+        method(req, 'GET');
+        json(res, 200, await searchReferences(decode(searchMatch[1]), url.searchParams.get('q')));
+        return true;
+      }
+      const textMatch = /^\/api\/courses\/([^/]+)\/references\/([^/]+)\/text$/.exec(path);
+      if (textMatch) {
+        method(req, 'POST');
+        const value = await body(req);
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => key !== 'ocr')
+            || value.ocr !== undefined && typeof value.ocr !== 'boolean') fail(400, '正文提取参数无效。');
+        json(res, 202, await startReferenceExtraction(decode(textMatch[1]), decode(textMatch[2]), value.ocr === true));
+        return true;
+      }
+      const referenceMatch = /^\/api\/courses\/([^/]+)\/references(?:\/([^/]+)(\/file)?)?$/.exec(path);
+      if (referenceMatch) {
+        const id = decode(referenceMatch[1]);
+        const referenceId = referenceMatch[2] && decode(referenceMatch[2]);
+        if (!referenceId) {
+          method(req, 'GET', 'POST');
+          if (req.method === 'GET') json(res, 200, await listReferences(id));
+          else {
+            try {
+              if (Number(req.headers['content-length']) > 100 * 1024 * 1024) fail(413, '单份辅助资料最大 100 MiB（104857600 字节）。');
+              const filename = decode(typeof req.headers['x-filename'] === 'string' ? req.headers['x-filename'] : '');
+              const reference = await importReference(id, req, filename);
+              json(res, 201, await startReferenceExtraction(id, reference.id));
+            } catch (error) { req.resume(); throw error; }
+          }
+        } else if (referenceMatch[3]) {
+          method(req, 'GET', 'HEAD');
+          const file = await getReferenceFile(id, referenceId);
+          await serveFile(req, res, file.path, file.filename);
+        } else {
+          method(req, 'PATCH', 'DELETE');
+          json(res, 200, req.method === 'PATCH'
+            ? await updateReference(id, referenceId, await body(req)) : await deleteReference(id, referenceId));
+        }
+        return true;
+      }
       const nodeMatch = /^\/api\/courses\/([^/]+)\/artifacts\/([^/]+)\/nodes\/([^/]+)$/.exec(path);
       if (nodeMatch) {
         method(req, 'PATCH');

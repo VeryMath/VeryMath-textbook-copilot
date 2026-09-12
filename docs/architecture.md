@@ -144,6 +144,28 @@ ACP 模式将公共教学要求、教材上下文与本轮要求交给同一个�
 
 课程接口包括 `/api/storage`、`/api/settings`、`/api/courses`，以及 `/api/courses/:id/` 下的 `state`、`textbook`、`pages/:page`、`conversations`、`outputs/*`、`migrate`。`GET /api/agent/status` 返回 Agent 和 Skill 配置状态，`GET /api/skills` 返回按钮可用状态。
 
+辅助资料保存在课程目录的 `references/<资料ID>/`，包含原文件、`metadata.json` 和提取后生成的 `text.json`。元数据记录 `id`、`title`、`filename`、`description`、`size`（字节）、`format`、`createdAt` 和 `textIndex`。列表接口附加文件访问 `url`；提取期间返回排队状态或当前处理进度。
+
+| 辅助资料接口 | 用途 |
+| --- | --- |
+| `GET /api/courses/:id/references` | 列出当前课程的资料 |
+| `POST /api/courses/:id/references` | 上传原始文件，请求头 `X-Filename` 为经过 URL 编码的文件名 |
+| `PATCH /api/courses/:id/references/:referenceId` | 更新 `title` 和 `description` |
+| `DELETE /api/courses/:id/references/:referenceId` | 删除资料目录；课程任务执行期间返回 409 |
+| `GET/HEAD /api/courses/:id/references/:referenceId/file` | 打开或下载原文件，支持范围请求 |
+| `POST /api/courses/:id/references/:referenceId/text` | 后台提取正文，`ocr: true` 启用扫描文字识别，返回 202 |
+| `GET /api/courses/:id/references/search?q=...` | 搜索当前课程辅助资料正文，返回片段、位置、原文件链接及提取进度 |
+
+`server/reference-text.mjs` 提取 PDF 文字层、Office 文档正文和文本段落。PDF 保留文件页序，PPTX 按演示文稿目录保留页面顺序，DOCX、TXT 和 Markdown 记录非空正文段落序号。`text.json` 的 `pages` 条目包含正文 `text`、位置及来源 `source`。文字识别使用 Tesseract；PDF 每页文字层少于 30 个非空白字符时，启用识别会通过 `pdftoppm` 渲染该页并识别。中文语言数据使用 `chi_sim` 或 `chi_tra`。图片通过同一文字识别工具处理。
+
+上传后自动加入串行提取队列，已有资料首次搜索时加入队列。删除资料会中止该资料的提取。搜索对正文和查询进行 Unicode NFKC 规范化、中文相邻字符间空白合并和大小写归一化，按连续文字匹配。每条结果最多保留命中前 110 个字符和后 170 个字符；落在同一片段内的匹配合并展示。`total` 为合并后的片段数量，响应最多返回前 100 条，PDF 链接附加 `#page=N`。查询范围由课程目录确定。
+
+辅助资料多选通过 `SkillRequest.referenceIds` 传递。服务端在当前课程清单中逐项查找这些 ID，空数组表示本轮围绕主教材回答，跨课程或已删除的 ID 返回错误。界面在输入框展示所选资料，并将资料名称和链接随用户消息保存。已提取资料通过 `textPath` 向 Agent 提供正文路径。导图、图谱、视频和课件的教材取材规则继续生效。
+
+`server/agent.mjs` 在自由问答、教材解析、讲解和出题任务中读取辅助资料清单与本地路径。Agent 根据问题按需读取文件，引用时注明资料名称和该资料的页码。图谱的教材页码字段继续对应主教材。旧课程首次添加资料时创建 `references` 目录。
+
+`skillId` 或 `artifact.kind` 为 `slides`、`mindmap`、`knowledge-graph`、`video` 的任务跳过辅助资料清单读取。思维导图、知识图谱、讲解视频和课件围绕主教材的内容、章节和所选范围生成与修改。通用 Agent 指令禁止这些任务参考课程辅助资料，包含原文件、解析缓存和历史对话中的转述；该规则也适用于自由问答中的相关制作请求。修改时核对主教材并读取已有结果及其源码。
+
 连接接口包括 `POST /api/agent/connect`、`disconnect`、`login`、`login/cancel` 和 `PATCH /api/agent/config`。这些操作使用 JSON 请求体；配置仅写入个人 `settings.json` 的 `agent` 字段。
 
 ## 后续开发方向

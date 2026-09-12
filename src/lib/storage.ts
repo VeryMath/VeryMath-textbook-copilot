@@ -1,4 +1,4 @@
-import type { Artifact, Book, Chapter, ConversationInfo, Message, PersonalSettings, ReadingState, StorageInfo } from './types';
+import type { Artifact, Book, Chapter, ConversationInfo, CourseReference, Message, PersonalSettings, ReadingState, ReferenceSearchResult, StorageInfo } from './types';
 
 const coursePath = (courseId: string) => `/api/courses/${encodeURIComponent(courseId)}`;
 
@@ -37,6 +37,33 @@ export function getStorageInfo(signal?: AbortSignal): Promise<StorageInfo> {
 
 export function getCourses(signal?: AbortSignal): Promise<Book[]> {
   return getJson('/api/courses', { signal });
+}
+
+export function listReferences(courseId: string, signal?: AbortSignal): Promise<CourseReference[]> {
+  return getJson(`${coursePath(courseId)}/references`, { signal });
+}
+
+export function extractReferenceText(courseId: string, id: string, ocr = false): Promise<CourseReference> {
+  return getJson(`${coursePath(courseId)}/references/${encodeURIComponent(id)}/text`, { method: 'POST', ...jsonBody({ ocr }) });
+}
+
+export function searchReferences(courseId: string, query: string, signal?: AbortSignal): Promise<ReferenceSearchResult> {
+  return getJson(`${coursePath(courseId)}/references/search?q=${encodeURIComponent(query)}`, { signal });
+}
+
+export function uploadReference(courseId: string, file: File): Promise<CourseReference> {
+  if (file.size > 100 * 1024 * 1024) return Promise.reject(new Error('单份辅助资料最大 100 MiB（104857600 字节）。'));
+  return getJson(`${coursePath(courseId)}/references`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) }, body: file,
+  });
+}
+
+export function updateReference(courseId: string, id: string, value: { title: string; description: string }): Promise<CourseReference> {
+  return getJson(`${coursePath(courseId)}/references/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(value) });
+}
+
+export async function deleteReference(courseId: string, id: string): Promise<void> {
+  await request(`${coursePath(courseId)}/references/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function getCourseState(courseId: string, signal?: AbortSignal): Promise<ReadingState> {
