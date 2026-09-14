@@ -1,3 +1,4 @@
+import { pageRangeError } from '../shared/page-range.mjs';
 import { chmod, copyFile, cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
@@ -515,12 +516,14 @@ export async function resolveCourseFile(id, filename) {
 }
 
 function normalizeArtifactSource(source) {
-  if (!object(source) || !['page', 'section', 'chapter', 'selection', 'book'].includes(source.scope)
+  if (!object(source) || !['page', 'section', 'chapter', 'selection', 'range', 'book'].includes(source.scope)
       || !positive(source.page)
       || !['chapterId', 'sectionId'].every(key => source[key] === undefined
         || (typeof source[key] === 'string' && source[key].trim()))) return undefined;
+  if (source.scope === 'range' && (pageRangeError(source.pageRange) || source.page !== source.pageRange.start)) return undefined;
   return {
     scope: source.scope, page: source.page,
+    ...(source.scope === 'range' ? { pageRange: { start: source.pageRange.start, end: source.pageRange.end } } : {}),
     ...(source.chapterId === undefined ? {} : { chapterId: source.chapterId }),
     ...(source.sectionId === undefined ? {} : { sectionId: source.sectionId }),
   };
@@ -659,7 +662,7 @@ export async function saveArtifact(id, artifact) {
 }
 
 function sourceForRequest(request, outline) {
-  const source = normalizeArtifactSource({ scope: request.scope, page: request.page });
+  const source = normalizeArtifactSource({ scope: request.scope, page: request.page, pageRange: request.pageRange });
   if (!source || source.scope === 'book') return source;
   const chapters = (Array.isArray(outline) ? outline : []).filter(item => object(item)
     && typeof item.id === 'string' && item.id.trim() && positive(item.page)
@@ -750,6 +753,7 @@ export async function createGeneratedArtifactSaver(id, request) {
         }) } : artifact;
       const result = normalizeArtifact(record, incoming);
       delete result.source;
+      if (source?.scope === 'range' && !['mindmap', 'knowledge-graph'].includes(result.kind)) result.source = { ...source };
       if (result.kind === 'knowledge-graph') {
         // Only new generations require v2; legacy files stay readable as they are.
         try { validateKnowledgeGraph(result, result.id, record.totalPages, { requireV2: true }); }

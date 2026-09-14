@@ -7,6 +7,7 @@ import { codingAgent, getAgentStatus, getSkillAvailability, connectAgent, discon
 export { disposeAgent } from './agent.mjs';
 import { handleCourseApi } from './course-api.mjs';
 import { createGeneratedArtifactSaver, getCoursePaths, outputUrl } from './course-store.mjs';
+import { pageRangeError } from '../shared/page-range.mjs';
 import { slideTemplates } from './slide-templates.mjs';
 
 const pdfAssetsRoot = fileURLToPath(new URL('../node_modules/pdfjs-dist/', import.meta.url));
@@ -59,13 +60,19 @@ function checkRequest(request) {
     || typeof request.skillId !== 'string' || !request.book
     || !['id', 'title', 'filename'].every((key) => typeof request.book[key] === 'string')
     || !Number.isInteger(request.page) || request.page < 1
-    || !['page', 'section', 'chapter', 'selection', 'book'].includes(request.scope)
+    || !['page', 'section', 'chapter', 'selection', 'range', 'book'].includes(request.scope)
     || (request.knowledgeGraphDetail !== undefined && !['overview', 'detailed'].includes(request.knowledgeGraphDetail))
     || !['selectedText', 'pageText', 'prompt'].every((key) => typeof request[key] === 'string')
     || !Array.isArray(request.history)
     || !request.history.every((item) => item && ['user', 'assistant'].includes(item.role) && typeof item.content === 'string')) {
     throw new HttpError(400, '缺少教材、页码、操作范围或问题内容，请刷新页面后重试。');
   }
+  if (request.scope === 'range') {
+    const error = pageRangeError(request.pageRange);
+    if (error) throw new HttpError(400, error);
+    if (request.page !== request.pageRange.start) throw new HttpError(400, '请求页码应为指定范围的起始页。');
+  } else if (request.pageRange !== undefined) throw new HttpError(400, '页码范围只能用于“指定页码”操作。');
+  if (request.scope === 'selection' && !request.selectedText.trim()) throw new HttpError(400, '请先选中文字，或改用指定页码。');
   if (request.templateId !== undefined && !slideTemplates.some(template => template.id === request.templateId)) {
     throw new HttpError(400, '请选择白底深蓝、米白宋体或蓝色标题栏模板。');
   }
@@ -84,6 +91,10 @@ async function writeEvent(res, event, signal) {
 
 async function runAgent(req, res, request, skills) {
   const paths = await getCoursePaths(request.book.id);
+  if (request.scope === 'range') {
+    const error = pageRangeError(request.pageRange, paths.totalPages);
+    if (error) throw new HttpError(400, error);
+  }
   const saveGeneratedArtifact = await createGeneratedArtifactSaver(request.book.id, request);
   const controller = new AbortController();
   const stop = () => {

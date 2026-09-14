@@ -1,0 +1,12 @@
+.page-range-picker{margin:10px 0 4px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;min-width:0;}
+.page-range-picker legend{padding:0 5px;font-size:12px;color:var(--text-secondary);}
+.page-range-picker>div{display:flex;align-items:center;gap:10px;}
+.page-range-picker label{display:flex;align-items:center;gap:7px;flex:1;min-width:0;font-size:12px;color:var(--text-secondary);}
+.page-range-picker input{width:100%;min-width:0;max-width:95px;padding:7px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font:inherit;}
+.page-range-picker input:focus{outline:2px solid var(--accent-border);outline-offset:1px;}
+.page-range-picker p,.selection-help p,.scope-summary{font-size:12px;line-height:1.7;color:var(--text-secondary);margin:8px 0 0;}
+.page-range-picker .scope-error{color:var(--accent);}
+.selection-help{margin:10px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft);}
+.selection-help p{margin:0 0 6px;}
+.selection-help button{font-size:12px;margin-right:12px;}
+.scope-summary{margin:6px 0 0;}

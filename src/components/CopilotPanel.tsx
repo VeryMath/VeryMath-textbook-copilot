@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Video, Waypoints, X, LoaderCircle, ArrowUpRight, AlertCircle, History } from 'lucide-react';
-import type { Artifact, Book, Chapter, CourseReference, KnowledgeGraphDetail, Message, Scope, SkillId, SkillInfo } from '../lib/types';
+import type { Artifact, Book, Chapter, CourseReference, KnowledgeGraphDetail, Message, PageRange, Scope, SkillId, SkillInfo } from '../lib/types';
 import Markdown from './Markdown';
 import './slide-template-picker.css';
+import './scope-picker.css';
+import { pageRangeError } from '../../shared/page-range.mjs';
 
 const tools = [
   { id: 'textbook-parse', title: '教材解析', subtitle: '提取正文公式与图片', icon: FileText, prompt: '请解析所选范围的教材，提取正文、LaTeX 公式、图片和目录，保留对应的 PDF 页码，并保存为学习资料。' },
@@ -17,9 +19,9 @@ const tools = [
 
 interface Props {
   references: CourseReference[]; referenceQuestionId: number; onRemoveReference: (id: string) => void;
-  book: Book; page: number; chapter?: Chapter; selectedText: string; onClearSelection: () => void;
+  book: Book; page: number; chapter?: Chapter; selectedText: string; onClearSelection: () => void; onShowTextbook: () => void;
   contextArtifact?: Artifact; onClearArtifact: () => void;
-  skills: SkillInfo[]; messages: Message[]; busy: boolean; running: boolean; onSend: (id: SkillId, prompt: string, scope: Scope, knowledgeGraphDetail?: KnowledgeGraphDetail, templateId?: string) => void;
+  skills: SkillInfo[]; messages: Message[]; busy: boolean; running: boolean; onSend: (id: SkillId, prompt: string, scope: Scope, knowledgeGraphDetail?: KnowledgeGraphDetail, templateId?: string, pageRange?: PageRange) => void;
   onStop: () => void; onReset: () => void; onHistory: () => void; onArtifact: (artifact: Artifact) => void; onSettings: () => void;
 }
 
@@ -28,6 +30,8 @@ export default function CopilotPanel(props: Props) {
   const [activeSkill, setActiveSkill] = useState<SkillId>('chat');
   const [prompt, setPrompt] = useState('');
   const [scope, setScope] = useState<Scope>('page');
+  const [rangeStart, setRangeStart] = useState(String(page));
+  const [rangeEnd, setRangeEnd] = useState(String(page));
   const [templateId, setTemplateId] = useState('');
   const [knowledgeGraphDetail, setKnowledgeGraphDetail] = useState<KnowledgeGraphDetail>('overview');
   const [toolsOpen, setToolsOpen] = useState(true);
@@ -36,9 +40,10 @@ export default function CopilotPanel(props: Props) {
   const selectedInfo = skills.find(skill => skill.id === activeSkill);
   const activeTitle = tools.find(tool => tool.id === activeSkill)?.title;
   const connectedCount = skills.filter(skill => skill.available).length;
-  const structureScope = activeSkill === 'mindmap' || activeSkill === 'knowledge-graph';
-  const currentScope = structureScope && scope === 'page' ? 'section'
-    : !structureScope && scope === 'section' ? 'page' : scope;
+  const currentScope = scope;
+  const pageRange = { start: Number(rangeStart), end: Number(rangeEnd) };
+  const rangeError = currentScope === 'range' ? pageRangeError(pageRange, book.totalPages) : '';
+  const scopeError = rangeError || (currentScope === 'selection' && !selectedText ? '请先在教材上拖选文字，或改用“指定页码”。' : '');
   const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].includes(activeSkill)
     || ['slides', 'mindmap', 'knowledge-graph', 'video'].includes(contextArtifact?.kind || '');
 
@@ -64,11 +69,11 @@ export default function CopilotPanel(props: Props) {
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => { setPrompt(''); setScope('page'); setActiveSkill('chat'); setTemplateId(''); setKnowledgeGraphDetail('overview'); setToolsOpen(true); }, [book.id]);
+  useEffect(() => { setPrompt(''); setScope('page'); setRangeStart(String(page)); setRangeEnd(String(page)); setActiveSkill('chat'); setTemplateId(''); setKnowledgeGraphDetail('overview'); setToolsOpen(true); }, [book.id]);
 
   function submit() {
-    if (!prompt.trim() || busy || (currentScope === 'selection' && !selectedText)) return;
-    props.onSend(activeSkill, prompt.trim(), currentScope, activeSkill === 'knowledge-graph' ? knowledgeGraphDetail : undefined, activeSkill === 'slides' ? templateId || undefined : undefined);
+    if (!prompt.trim() || busy || scopeError) return;
+    props.onSend(activeSkill, prompt.trim(), currentScope, activeSkill === 'knowledge-graph' ? knowledgeGraphDetail : undefined, activeSkill === 'slides' ? templateId || undefined : undefined, currentScope === 'range' ? pageRange : undefined);
     setPrompt('');
     setToolsOpen(false);
   }
@@ -115,7 +120,7 @@ export default function CopilotPanel(props: Props) {
         {!textbookTask && <span title={props.references.map(reference => reference.title).join('\n')}>{props.references.length} 份资料</span>}
       </div>}
       {contextArtifact && <div className="selection-context artifact-context"><FileSliders size={14}/><span title={contextArtifact.title}>正在讨论：{contextArtifact.title}</span><button className="icon-button" onClick={props.onClearArtifact} aria-label="清除资料上下文"><X size={14}/></button></div>}
-      {selectedText && <div className="selection-context"><Quote size={14}/><span>{selectedText}</span><button className="icon-button" onClick={props.onClearSelection} aria-label="清除选中内容"><X size={14}/></button></div>}
+      {selectedText && <div className="selection-context"><Quote size={14}/><span title={selectedText}>{currentScope === 'selection' ? '本轮选文：' : '已选文字（本轮未使用）：'}{selectedText}</span><button className="icon-button" onClick={props.onClearSelection} aria-label="清除选中内容"><X size={14}/></button></div>}
       <div className="composer">
         {activeSkill === 'slides' && <label className="slide-template-picker">课件模板
           <select aria-label="课件模板" value={templateId} disabled={busy} onChange={event => setTemplateId(event.target.value)}>
@@ -124,12 +129,19 @@ export default function CopilotPanel(props: Props) {
           </select>
           {templateId && <small>{selectedInfo?.templates?.find(template => template.id === templateId)?.description}</small>}
         </label>}
-        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<label className="scope-picker"><select aria-label="操作范围" value={currentScope} onChange={event => setScope(event.target.value as Scope)}>
-          {structureScope ? <><option value="section">当前节</option><option value="chapter">当前章</option></> : <><option value="page">当前页</option><option value="chapter">当前章节</option></>}
-          <option value="book">整本教材</option><option value="selection" disabled={!selectedText}>选中内容</option>
+        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<label className="scope-picker"><select aria-label="操作范围" disabled={busy} value={currentScope} onChange={event => setScope(event.target.value as Scope)}>
+          <option value="page">当前页</option><option value="section">当前节</option><option value="chapter">当前章</option>
+          <option value="range">指定页码</option><option value="selection">选中文字</option><option value="book">整本教材</option>
         </select><ChevronDown size={12}/></label></div>
+        {currentScope === 'range' && <fieldset className="page-range-picker" disabled={busy}>
+          <legend>教材 PDF 页码</legend>
+          <div><label>起始页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="起始页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeStart} onChange={event=>setRangeStart(event.target.value)}/></label><span>—</span><label>结束页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="结束页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeEnd} onChange={event=>setRangeEnd(event.target.value)}/></label></div>
+          <p id="page-range-note" className={rangeError ? 'scope-error' : ''} role={rangeError ? 'alert' : undefined}>{rangeError || `将处理第 ${pageRange.start}–${pageRange.end} 页，共 ${pageRange.end-pageRange.start+1} 页（PDF 页序，不是书内页码）。`}</p>
+        </fieldset>}
+        {currentScope === 'selection' && !selectedText && <div className="selection-help"><p>在教材上拖选文字即可引用。连续多页或扫描教材，请用“指定页码”。</p><button className="text-button" onClick={props.onShowTextbook}>去教材选文字</button><button className="text-button" onClick={()=>setScope('range')}>改用指定页码</button></div>}
+        {currentScope === 'page' && <p className="scope-summary">本轮范围：PDF 第 {page} 页</p>}
         <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder={activeSkill === 'chat' ? '关于这本教材，你想了解什么？' : '补充你的要求…'} aria-label="向 Copilot 输入要求" rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
-        <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{props.running ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={busy || !prompt.trim()} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
+        <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{props.running ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={busy || !prompt.trim() || Boolean(scopeError)} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
       </div>
       <button className="connection-note" onClick={props.onSettings}><span className={`status-dot ${connectedCount ? 'online' : ''}`}/>{connectedCount ? `${connectedCount} 个工具已连接` : '学习工具待接入'}<span>查看连接<ArrowUpRight size={11}/></span></button>
     </div>
