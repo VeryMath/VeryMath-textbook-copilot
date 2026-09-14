@@ -62,6 +62,12 @@ HOST=127.0.0.1 PORT=4173 COURSE_COPILOT_HOME="$HOME/.course-copilot" nohup node 
 
 Codex、Claude 使用仓库自带 ACP 组件时 executable 留空，不填普通 CLI 路径代替适配器。其他预设 Agent 的默认参数由 agent-providers.mjs 提供。模型只能在连接后选取 status.models 中的真实 ID，支持手填的接口除外；没有指定模型时保持原设置。
 
+## 图片输入能力
+
+检查所选模型、API 服务和 Agent 是否支持图片输入，不能将连接成功视为多模态已就绪。OpenCode 自定义模型如需声明图片能力，在已有 provider 的对应 models 条目中合并 `modalities: { input: ["text", "image"], output: ["text"] }`，保留原有字段及其他支持的输入类型。只有确认模型与接口支持图片时才修改；没有显式声明不一定意味着图片已禁用。
+
+工作台会继承 OpenCode 的 provider/model 配置，修改后断开并重新连接。使用真实教材截图确认模型能识别其中内容；无法验证时说明图片能力待确认，不直接认定模型不支持，也不盲目开启。具体说明见项目 docs/agent-integration.md 的“图片输入与扫描教材”。
+
 ## 就绪判断
 
 - 首页实际返回应用 HTML，引用的 JS/CSS 能加载；不是“页面尚未构建”的返回内容。

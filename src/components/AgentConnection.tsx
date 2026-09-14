@@ -124,6 +124,16 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
         <small>{connected ? status?.modelNote || `读取 ${agentName} 的模型配置。` : '连接后可以选择模型。'}</small>
       </label>
 
+      <div className="agent-vision-note">
+        <p>读取教材截图、扫描页和图表，需要模型、API 服务和 Agent 均支持图片输入；连接成功不代表已验证看图能力。</p>
+        {provider === 'opencode' && <details>
+          <summary>OpenCode 无法看图时如何配置？</summary>
+          <p>若模型和 API 本身支持图片，请检查 OpenCode 对应模型的输入能力声明。在已有的 provider → 服务名称 → models → 模型名称下合并以下字段：</p>
+          <pre><code>{JSON.stringify({modalities:{input:['text','image'],output:['text']}},null,2)}</code></pre>
+          <p>保留原来的服务地址、凭据、其他参数及已支持的输入类型。修改后，在这里断开并重新连接 OpenCode，再用一张真实图片确认。这个声明不会让纯文本模型获得看图能力。</p>
+        </details>}
+      </div>
+
       {installed && !connected && !status?.login && !!status?.authMethods?.length && <label className="agent-field">认证方式
         <select aria-label="Agent 认证方式" value={authMethod} disabled={locked} onChange={event => setAuthMethod(event.target.value)}>{status.authMethods.map(method => <option key={method.id} value={method.id}>{method.name}</option>)}</select>
         <small>由 Agent 处理认证，也可以先在本机终端登录后重新连接。</small>
