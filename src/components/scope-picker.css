@@ -10,3 +10,7 @@
 .selection-help p{margin:0 0 6px;}
 .selection-help button{font-size:12px;margin-right:12px;}
 .scope-summary{margin:6px 0 0;}
+.task-progress .message-progress{min-width:0;align-items:flex-start;}
+.task-progress .message-progress svg{flex-shrink:0;margin-top:3px;}
+.task-progress .message-progress span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.task-progress small{display:block;font-size:11px;color:var(--text-secondary);margin:5px 0 0 22px;line-height:1.6;}

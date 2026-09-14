@@ -217,7 +217,7 @@ export default function App() {
     setMobileView('copilot');
     const userId=crypto.randomUUID(), assistantId=crypto.randomUUID();
     const submittedPrompt = scope === 'range' ? `【教材 PDF 第 ${pageRange!.start}–${pageRange!.end} 页】\n${prompt}` : prompt;
-    setMessages(current=>[...current,{id:userId,role:'user',content:submittedPrompt,skillId,references:references.map(({id,title,url})=>({id,title,url}))},{id:assistantId,role:'assistant',content:'',skillId,status:'running',progress:'正在连接 Coding Agent…'}]);
+    setMessages(current=>[...current,{id:userId,role:'user',content:submittedPrompt,skillId,references:references.map(({id,title,url})=>({id,title,url}))},{id:assistantId,role:'assistant',content:'',skillId,status:'running',startedAt:Date.now(),progress:'请求已发送，正在准备课程任务…'}]);
     try {
       await runSkill({skillId,referenceIds:references.map(item=>item.id),...(skillId==='slides' && templateId ? {templateId} : {}),book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:requestChapter,page:requestPage,scope,...(scope==='range'?{pageRange}:{}),...(skillId==='knowledge-graph'?{knowledgeGraphDetail:knowledgeGraphDetail||'overview'}:{}),selectedText:!artifactOverride && scope==='selection'?quote:'',pageText:requestPage===page?pageText:'',prompt,artifact:artifactOverride ?? contextArtifact,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
         if(abort.signal.aborted || controller.current!==abort) return;

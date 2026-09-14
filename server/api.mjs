@@ -95,7 +95,7 @@ async function runAgent(req, res, request, skills) {
     const error = pageRangeError(request.pageRange, paths.totalPages);
     if (error) throw new HttpError(400, error);
   }
-  const saveGeneratedArtifact = await createGeneratedArtifactSaver(request.book.id, request);
+  let saveGeneratedArtifact;
   const controller = new AbortController();
   const stop = () => {
     if (!res.writableFinished) controller.abort();
@@ -111,6 +111,10 @@ async function runAgent(req, res, request, skills) {
       'X-Accel-Buffering': 'no',
     });
     res.flushHeaders();
+    await writeEvent(res, { type: 'progress', message: request.scope === 'range'
+      ? `正在准备教材 PDF 第 ${request.pageRange.start}–${request.pageRange.end} 页的任务…` : '正在准备课程资料…' }, controller.signal);
+    saveGeneratedArtifact = await createGeneratedArtifactSaver(request.book.id, request);
+    controller.signal.throwIfAborted();
     for await (const rawEvent of codingAgent(request, {
       signal: controller.signal, ...paths, skills,
       ...saveGeneratedArtifact.knowledgeGraphContext,
@@ -143,7 +147,7 @@ async function runAgent(req, res, request, skills) {
       res.write(`${JSON.stringify({ type: 'error', message: `Coding Agent 执行失败：${reason}` })}\n`);
     }
   } finally {
-    saveGeneratedArtifact.dispose();
+    saveGeneratedArtifact?.dispose();
     req.off('aborted', stop);
     res.off('close', stop);
     if (!res.destroyed) res.end();

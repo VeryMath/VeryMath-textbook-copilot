@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Video, Waypoints, X, LoaderCircle, ArrowUpRight, AlertCircle, History } from 'lucide-react';
+import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Video, Waypoints, X, ArrowUpRight, AlertCircle, History } from 'lucide-react';
 import type { Artifact, Book, Chapter, CourseReference, KnowledgeGraphDetail, Message, PageRange, Scope, SkillId, SkillInfo } from '../lib/types';
 import Markdown from './Markdown';
 import './slide-template-picker.css';
 import './scope-picker.css';
+import TaskProgress from './TaskProgress';
 import { pageRangeError } from '../../shared/page-range.mjs';
 
 const tools = [
@@ -55,7 +56,7 @@ export default function CopilotPanel(props: Props) {
   useEffect(() => { if (selectedText) setScope('selection'); else setScope(current => current === 'selection' ? 'page' : current); }, [selectedText]);
   useEffect(() => {
     const container = conversation.current;
-    if (container?.clientHeight) container.scrollTo({ top: messages.length ? container.scrollHeight : 0, behavior: 'smooth' });
+    if (container?.clientHeight) container.scrollTo({ top: messages.length ? container.scrollHeight : 0, behavior: 'instant' });
   }, [messages]);
   useEffect(() => {
     const container = conversation.current;
@@ -107,7 +108,7 @@ export default function CopilotPanel(props: Props) {
         {message.role === 'assistant' && <div className="message-name"><Sparkles size={14}/> Copilot</div>}
         {message.references?.length ? <div className="message-references">{message.references.map(reference => <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer"><FileText size={12}/>{reference.title}</a>)}</div> : null}
         {message.content && <Markdown book={book}>{message.content}</Markdown>}
-        {message.status === 'running' && <div className="message-progress"><LoaderCircle size={14} className="spin"/>{message.progress || '正在处理…'}</div>}
+        {message.status === 'running' && <TaskProgress message={message}/>}
         {(message.status === 'error' || message.status === 'stopped') && <div className="message-error"><AlertCircle size={15}/><span>{message.progress || '暂时无法完成，请稍后重试。'}</span></div>}
         {message.artifacts?.map(artifact => <button className="artifact-message" key={artifact.id} onClick={() => props.onArtifact(artifact)}><FileSliders size={18}/><span>{artifact.title}<small>点击在左侧查看</small></span><ArrowUpRight size={16}/></button>)}
         {message.status === 'done' && !message.content && !message.artifacts?.length && <div className="message-progress"><Check size={14}/>已完成</div>}

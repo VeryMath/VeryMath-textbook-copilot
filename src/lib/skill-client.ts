@@ -94,6 +94,15 @@ export async function runSkill(
   const decoder = new TextDecoder();
   let pending = '';
   let completed = false;
+  let queuedText = '';
+  let textTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastProgress = '';
+  function flushText() {
+    clearTimeout(textTimer); textTimer = undefined;
+    if (!queuedText) return;
+    const content = queuedText; queuedText = '';
+    if (!signal.aborted) onEvent({ type: 'text', content });
+  }
   function deliver(line: string) {
     if (!line.trim() || completed) return;
     let event: SkillEvent;
@@ -104,6 +113,17 @@ export async function runSkill(
     }
     if (!event || !['progress', 'text', 'artifact', 'done', 'error'].includes(event.type)) {
       throw new Error('Coding Agent 返回了无法识别的内容。');
+    }
+    if (event.type === 'text') {
+      queuedText += event.content;
+      lastProgress = '';
+      textTimer ??= setTimeout(flushText, 50);
+      return;
+    }
+    flushText();
+    if (event.type === 'progress') {
+      if (event.message === lastProgress) return;
+      lastProgress = event.message;
     }
     onEvent(event);
     if (event.type === 'error') throw new Error(event.message || 'Coding Agent 执行失败，请稍后重试。');
@@ -128,6 +148,7 @@ export async function runSkill(
     signal.throwIfAborted();
     if (!completed) throw new Error('连接已结束，但 Coding Agent 尚未返回完成信息，请重试。');
   } finally {
+    flushText();
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }

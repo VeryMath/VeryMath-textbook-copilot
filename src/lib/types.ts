@@ -166,6 +166,7 @@ export interface Message {
   content: string;
   references?: Pick<CourseReference, 'id' | 'title' | 'url'>[];
   skillId?: SkillId;
+  startedAt?: number;
   status?: 'running' | 'done' | 'error' | 'stopped';
   progress?: string;
   artifacts?: Artifact[];
