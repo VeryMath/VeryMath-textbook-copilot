@@ -73,7 +73,7 @@ export async function connectionCandidates(provider, mode, profile) {
     let loginCommand = spec.loginCommand;
     if (provider === 'codex') {
       const codex = createRequire(script).resolve('@openai/codex/bin/codex.js');
-      loginCommand = [process.execPath, codex, 'login'];
+      loginCommand = [...(process.env.ELECTRON_RUN_AS_NODE === '1' ? ['env', 'ELECTRON_RUN_AS_NODE=1'] : []), process.execPath, codex, 'login'];
     }
     return [{ path: process.execPath, displayPath: script, args: [script, ...profile.args], loginCommand }];
   }
