@@ -98,9 +98,11 @@ export class AcpClient extends EventEmitter {
   }
 
   async startLogin(methodId) {
-    const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
+    const quote = value => `'${value.replaceAll("'", process.platform === 'win32' ? "''" : "'\\''")}'`;
     const command = this.config.loginCommand || [this.executable, ...(this.config.loginArgs || [])];
-    this.login = { loginId: 'acp-login', manual: true, command: command.map(quote).join(' ') };
+    const prefix = process.platform === 'win32'
+      ? `${process.env.ELECTRON_RUN_AS_NODE === '1' && command[0] === process.execPath ? "$env:ELECTRON_RUN_AS_NODE='1'; " : ''}& ` : '';
+    this.login = { loginId: 'acp-login', manual: true, command: prefix + command.map(quote).join(' ') };
     this.authError = '';
     if (methodId) {
       if (!this.authMethods.some(method => method.id === methodId)) throw new Error('请选择 Agent 提供的认证方式。');

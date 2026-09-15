@@ -73,7 +73,7 @@ export async function connectionCandidates(provider, mode, profile) {
     let loginCommand = spec.loginCommand;
     if (provider === 'codex') {
       const codex = createRequire(script).resolve('@openai/codex/bin/codex.js');
-      loginCommand = [...(process.env.ELECTRON_RUN_AS_NODE === '1' ? ['env', 'ELECTRON_RUN_AS_NODE=1'] : []), process.execPath, codex, 'login'];
+      loginCommand = [...(process.env.ELECTRON_RUN_AS_NODE === '1' && process.platform !== 'win32' ? ['env', 'ELECTRON_RUN_AS_NODE=1'] : []), process.execPath, codex, 'login'];
     }
     return [{ path: process.execPath, displayPath: script, args: [script, ...profile.args], loginCommand }];
   }
@@ -83,9 +83,13 @@ export async function connectionCandidates(provider, mode, profile) {
 
 export async function executableCandidates(command, provider) {
   if (!command) return [];
+  const names = process.platform === 'win32' && !/\.(exe|com|cmd|bat)$/i.test(command)
+    ? [`${command}.exe`, `${command}.com`, command] : [command];
+  const pathKey = Object.keys(process.env).find(key => key.toLowerCase() === 'path') || 'PATH';
   const paths = isAbsolute(command) ? [command] : [
-    ...(process.env.PATH?.split(delimiter).filter(Boolean).map(path => resolve(path, command)) || []),
-    resolve(homedir(), '.local/bin', command), resolve('/usr/local/bin', command),
+    ...(process.env[pathKey]?.split(delimiter).filter(Boolean).flatMap(path => names.map(name => resolve(path, name))) || []),
+    ...names.map(name => resolve(homedir(), '.local/bin', name)),
+    ...(process.platform !== 'win32' ? [resolve('/usr/local/bin', command)] : []),
     ...(process.platform === 'darwin' ? [resolve('/opt/homebrew/bin', command)] : []),
   ];
   if (provider === 'codex' && command === 'codex' && process.platform === 'darwin') paths.push(

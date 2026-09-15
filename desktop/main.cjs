@@ -2,10 +2,12 @@ const { app, BrowserWindow, Menu, dialog, shell, session } = require('electron')
 const { spawn } = require('node:child_process');
 const { createWriteStream } = require('node:fs');
 const { mkdir, readFile, writeFile } = require('node:fs/promises');
-const { join } = require('node:path');
+const { delimiter, join } = require('node:path');
 const { homedir } = require('node:os');
 
 app.setName('VeryMath');
+const isMac = process.platform === 'darwin';
+if (process.platform === 'win32') app.setAppUserModelId('org.verymath.textbook');
 let window;
 let service;
 let serviceUrl;
@@ -47,10 +49,15 @@ function protectContents(contents) {
 }
 
 async function startService() {
+  const pathKey = Object.keys(process.env).find(key => key.toLowerCase() === 'path') || 'PATH';
+  const extraPaths = process.platform === 'win32'
+    ? [join(homedir(), '.local', 'bin'), process.env.APPDATA && join(process.env.APPDATA, 'npm')]
+    : [join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
   const environment = { ...process.env,
     ELECTRON_RUN_AS_NODE: '1', COURSE_COPILOT_HOME: dataDirectory, HOST: '127.0.0.1', PORT: '0',
-    PATH: [...new Set([process.env.PATH, join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].filter(Boolean))].join(':'),
   };
+  for (const key of Object.keys(environment)) if (key.toLowerCase() === 'path') delete environment[key];
+  environment.PATH = [...new Set([...(process.env[pathKey] || '').split(delimiter), ...extraPaths].filter(Boolean))].join(delimiter);
   service = spawn(process.execPath, [join(app.getAppPath(), 'server/index.mjs')], {
     cwd: app.getAppPath(), env: environment, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
@@ -102,7 +109,9 @@ async function createWindow() {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
   window.once('ready-to-show', () => window.show());
-  window.on('close', event => { if (!quitting) { event.preventDefault(); window.hide(); } });
+  window.on('close', event => {
+    if (!quitting) { event.preventDefault(); if (isMac) window.hide(); else app.quit(); }
+  });
   window.on('closed', () => { window = undefined; });
   await window.loadURL(serviceUrl);
 }
@@ -146,7 +155,7 @@ if (!app.requestSingleInstanceLock()) {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'VeryMath', submenu: [{ role: 'about', label: '关于 VeryMath' }, { type: 'separator' }, { role: 'services', label: '服务' }, { type: 'separator' }, { role: 'hide', label: '隐藏 VeryMath' }, { role: 'hideOthers', label: '隐藏其他' }, { role: 'unhide', label: '显示全部' }, { type: 'separator' }, { role: 'quit', label: '退出 VeryMath' }] },
+      { label: 'VeryMath', submenu: [{ role: 'about', label: '关于 VeryMath' }, ...(isMac ? [{ type: 'separator' }, { role: 'services', label: '服务' }, { type: 'separator' }, { role: 'hide', label: '隐藏 VeryMath' }, { role: 'hideOthers', label: '隐藏其他' }, { role: 'unhide', label: '显示全部' }] : []), { type: 'separator' }, { role: 'quit', label: '退出 VeryMath' }] },
       { label: '文件', submenu: [{ label: '打开课程数据目录', click: () => void shell.openPath(dataDirectory) }, { label: '选择课程数据目录…', click: () => void chooseDirectory().catch(error => dialog.showErrorBox('切换目录失败', error.message)) }, { type: 'separator' }, { role: 'close', label: '关闭窗口' }] },
       { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' }, { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] },
       { label: '视图', submenu: [{ role: 'reload', label: '重新载入' }, { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }, { role: 'togglefullscreen', label: '全屏' }] },

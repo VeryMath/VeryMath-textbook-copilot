@@ -54,6 +54,14 @@ npm run desktop:dist
 
 生成的 `.app` 位于 `release/mac-arm64/VeryMath.app`，磁盘映像位于 `release/`。`npm run desktop` 用于本机开发运行，`npm run desktop:pack` 生成应用目录。当前配置使用临时签名；向其他用户分发正式版本时，需要配置 Apple Developer ID 签名和公证。桌面实现及打包说明见 [macOS 桌面版](docs/macos-desktop.md)。
 
+### Windows 桌面版
+
+运行 `VeryMath-0.1.1-windows-x64-setup.exe`，按安装向导选择目录后启动。当前 Windows 安装包适用于 Intel / AMD 64 位处理器，使用 Windows 10 或更新版本。关闭教材主窗口会退出应用及本地课程服务。
+
+默认课程目录为 `%USERPROFILE%\.course-copilot`，可在文件菜单中选择已有课程。课程助手的手动登录命令在 PowerShell 中运行。LaTeX 和扫描文字识别依赖可通过工作区设置查看。
+
+Windows 源码打包命令为 `npm ci`、`npm run desktop:dist:win`。GitHub Actions 的 `Windows desktop` 工作流在 Windows 环境安装依赖并生成安装包，产物位于运行记录的 `VeryMath-windows-x64` 附件中。安装包采用未签名构建，Windows 可能显示发布者或 SmartScreen 提示。
+
 ### 浏览器版
 
 首次使用建议先读 [用户手册](docs/user-guide.md)，重点是安装与启动；其余功能由所选 Agent 自主完成。

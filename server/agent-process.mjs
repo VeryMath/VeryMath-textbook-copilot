@@ -16,6 +16,12 @@ export function startProcess(executable, args, cwd, env = process.env) {
 
 export function stopProcess(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === 'win32' && child.pid) {
+    execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, error => {
+      if (error && child.exitCode === null && child.signalCode === null) child.kill();
+    });
+    return;
+  }
   const stop = signal => {
     try { process.kill(process.platform === 'win32' ? child.pid : -child.pid, signal); }
     catch { child.kill(signal); }
@@ -63,5 +69,6 @@ export async function* commandMessages(executable, args, cwd, prompt, signal, on
 }
 
 export function loginCommand(executable) {
+  if (process.platform === 'win32') return `& '${executable.replaceAll("'", "''")}' auth login`;
   return `'${executable.replaceAll("'", "'\\''")}' auth login`;
 }

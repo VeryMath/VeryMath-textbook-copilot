@@ -1,0 +1,40 @@
+name: Windows desktop
+
+on:
+  push:
+    branches: [codex/windows-desktop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run desktop:dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Check bundled runtime
+        shell: pwsh
+        run: |
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $app = Resolve-Path 'release/win-unpacked/VeryMath.exe'
+          & $app --version | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Node.js failed to start' }
+          & $app 'release/win-unpacked/resources/app/node_modules/@openai/codex/bin/codex.js' --version | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Codex failed to start' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VeryMath-windows-x64
+          path: release/*-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
