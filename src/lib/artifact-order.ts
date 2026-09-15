@@ -98,7 +98,7 @@ function ambiguousTitleAncestor(title: string, entries: OutlineEntry[], page?: n
 export function graphPlacement(artifact: GraphArtifact, book?: Pick<Book, 'chapters'>): Placement {
   const entries = outlineEntries(book?.chapters ?? []);
   const source = artifact.source;
-  const hasSource = source && ['book', 'chapter', 'section', 'page', 'selection'].includes(source.scope) && validPage(source.page);
+  const hasSource = source && ['book', 'chapter', 'section', 'page', 'selection', 'range'].includes(source.scope) && validPage(source.page);
   const page = hasSource ? source.page : rootPage(artifact);
   let scope: Scope | 'detail' | undefined = hasSource ? source.scope : undefined;
   const localTitle = /选文|选中内容|当前页|单页/.test(artifact.title);
@@ -125,7 +125,7 @@ export function graphPlacement(artifact: GraphArtifact, book?: Pick<Book, 'chapt
   // Metadata may only identify the chapter. Find its section from the source page.
   if (path?.length === 1 && scope !== 'chapter' && !ambiguous) path = entryAtPage(entries, page, path)?.path ?? path;
   const range = scope === 'chapter' ? '整章' : scope === 'section' ? '整节'
-    : scope === 'selection' ? '选文' : scope === 'page' ? '单页' : '局部内容';
+    : scope === 'range' && source?.pageRange ? `PDF 第${source.pageRange.start}–${source.pageRange.end}页` : scope === 'selection' ? '选文' : scope === 'page' ? '单页' : '局部内容';
   if (!path?.[0]) return { key: [2, page ?? missing], label: page ? `${range} · PDF 第${page}页` : '范围未标注' };
   const [chapter, section = 0] = path;
   const prefix = `第${chapter}章${section ? ` · 第${section}节` : ''}`;

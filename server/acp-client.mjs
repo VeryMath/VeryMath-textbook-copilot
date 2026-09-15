@@ -138,6 +138,7 @@ export class AcpClient extends EventEmitter {
     signal.addEventListener('abort', cancel, { once: true });
     try {
       const cwd = this.config.workspace === 'outputs' ? outputsDir : courseDir;
+      yield { type: 'progress', message: `正在为本次任务创建 ${this.config.name} 会话…` };
       active.session = await this.wait(this.agent.buildSession({ cwd, mcpServers: [] }).start(), 30000, signal);
       signal.throwIfAborted();
       const sessionId = active.session.sessionId;
@@ -148,6 +149,7 @@ export class AcpClient extends EventEmitter {
         else if (this.legacyModels) await this.wait(this.agent.request('session/set_model', { sessionId, modelId: model }));
         else throw new Error('该 Agent 没有提供切换模型的接口，请将模型留空，并在 Agent 自身的配置或启动参数中选择。');
       }
+      yield { type: 'progress', message: `会话已就绪，等待 ${this.config.name} 回复…` };
       void active.session.prompt(`${instructions}\n\n${prompt}`).catch(() => {});
       let wroteText = false;
       let separateText = false;

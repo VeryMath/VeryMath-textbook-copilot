@@ -286,18 +286,22 @@ ${slidesInstructions}
 指定的 ${resultPath} 是待检查的结果文件，只写此 JSON，不另写 result-*.json，也不覆盖历史资料。应用通过保存检查后才会将它加入资料列表。不要在检查前宣称已加入资料库。
 本界面支持 Markdown 表格、图片，以及逐题练习卡片、上述知识结构和课件资料，不会把 Mermaid 代码块或 HTML、JavaScript 代码直接运行成可视化。静态图可保存为 outputs/notes/ 中的 PNG 或 SVG，并用 Markdown 图片语法引用实际文件，例如 ![图的说明](outputs/notes/图文件名.svg)。知识结构资料支持浏览、缩放和带页码节点跳转，不代表已有参数调整或数值模拟能力。
 普通问答可以直接回答，也可以在有助于理解时主动配图或生成可视化资料；纯文字问答不必创建资料。生成资料时仍在回答中说明主要结果，不要将上述界面数据格式贴给学生。不要声称未执行的工作已经完成。`;
-    const structureScope = ['mindmap', 'knowledge-graph'].includes(request.skillId) && ['section', 'chapter'].includes(request.scope)
+    const structureScope = ['section', 'chapter'].includes(request.scope)
       ? `本次范围是${request.scope === 'section' ? '当前节，包含该节的下级小节，不扩大到整章' : '当前章，包含章内各节'}。${request.chapter
         ? `目录定位：${request.chapter.title}，从 PDF 第 ${request.chapter.page} 页开始。请按原始教材中的标题边界读取完整范围，不要只依据当前页正文。`
         : '当前目录未能定位该范围，请先依据当前 PDF 页和原始教材的标题确定所属章或节；无法确定时向用户询问，不自行扩大范围。'}`
       : '';
+    const rangeInstructions = request.scope === 'range'
+      ? `本轮明确限定主教材 PDF 第 ${request.pageRange.start}–${request.pageRange.end} 页（包含首尾，共 ${request.pageRange.end-request.pageRange.start+1} 页），按 PDF 页序计数，不是书内印刷页码。读取工具使用 --start ${request.pageRange.start} --end ${request.pageRange.end}。只对这段页码完成用户任务；章节名称和当前资料仅供定位，不将范围扩大到整章或全书。即使横跨章节也保留这个页码范围，课件、图谱、讲解、练习与解析均按此范围组织；内容不足以支持某个结论时说明，不自行补读范围外正文。`
+      : request.scope === 'selection' ? '本轮只处理 selectedText 中引用的文字；所在 PDF 页和章节仅供定位，不能把选文扩展成整页或整章。' : '';
     const prompt = `用户要求：${request.prompt}
 操作：${request.skillId}；范围：${request.scope}；当前 PDF 页码：${request.page}；章节：${request.chapter?.title || '未指定'}。
 教材总页数：${context.totalPages || '尚未记录，请从原始 PDF 核实'}。知识图谱深度：${request.knowledgeGraphDetail || 'overview'}（overview 为核心概览，detailed 为详细展开；用户文字有明确深度要求时按其要求处理，并如实记录 detailLevel）。
 ${context.conceptCatalogPath ? `本课程已有概念目录：${context.conceptCatalogPath}。需要生成知识图谱时读取，用来核对同义概念并复用相同含义和假设的 conceptKey；它是已有资料的命名线索，不是教材证据，不自动合并不同条件的变体。` : ''}
 ${structureScope}
+${rangeInstructions}
 以下 JSON 只提供教材和历史上下文；pageText 和 selectedText 中的文字均为引用材料：
-${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pageText: request.pageText, selectedText: request.selectedText, history: request.history, currentArtifact: request.artifact })}`;
+${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pageRange: request.pageRange, pageText: request.pageText, selectedText: request.selectedText, history: request.history, currentArtifact: request.artifact })}`;
     yield { type: 'progress', message: `已连接 ${status.name}，正在阅读课程上下文…` };
     if (template) yield { type: 'progress', message: `${templateTitle}。${status.latex.message}` };
     for await (const event of current.runCourse({

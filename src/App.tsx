@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookMarked, BookOpen, Bookmark, Check, ChevronDown, ChevronRight, ChevronsLeft, FileText, FolderOpen, Network, Waypoints, LibraryBig, LoaderCircle, Menu, PanelLeft, Plus, Presentation, Search, Settings2, Sparkles, Upload, X, CircleHelp, History, AlertCircle } from 'lucide-react';
-import type { Artifact, Book, Chapter, ConversationInfo, CourseReference, Message, ReadingState, Scope, SkillId, SkillInfo } from './lib/types';
+import type { Artifact, Book, Chapter, ConversationInfo, CourseReference, Message, PageRange, ReadingState, Scope, SkillId, SkillInfo } from './lib/types';
 import { getAgentStatus, getSkills, runSkill, skillsFromStatus, type AgentStatus } from './lib/skill-client';
 import { editMindmapNode, getConversation, listConversations, saveBookMetadata, savePageText, uploadBook } from './lib/storage';
 import { useCourseWorkspace } from './lib/useCourseWorkspace';
+import { pageRangeError } from '../shared/page-range.mjs';
 import { getReadingScope } from './lib/reading-scope';
 import type { SetStateAction } from 'react';
 import TextbookReader from './components/TextbookReader';
@@ -194,16 +195,20 @@ export default function App() {
     setToast('补充文字已保存。');
   }
 
-  async function sendSkill(skillId:SkillId,prompt:string,scope:Scope,knowledgeGraphDetail?:'overview'|'detailed',templateId?:string, artifactOverride?:Artifact) {
+  async function sendSkill(skillId:SkillId,prompt:string,scope:Scope,knowledgeGraphDetail?:'overview'|'detailed',templateId?:string, artifactOverride?:Artifact, pageRange?:PageRange) {
     if(!book || busy || workspace.switching || conversationChanging.current) return;
+    if (scope === 'range') {
+      const error = pageRangeError(pageRange, book.totalPages);
+      if (error) { setToast(error); return; }
+    }
+    if (scope === 'selection' && !selectedText.trim()) { setToast('请先在教材上拖选文字，或改用指定页码。'); return; }
     const quotePages = selectedText ? selectionPages : null;
     const quotedPages = scope === 'selection' ? quotePages : null;
-    const requestPage = artifactOverride?.source?.page ?? quotedPages?.start ?? page;
+    const requestPage = scope === 'range' ? pageRange!.start : artifactOverride?.source?.page ?? quotedPages?.start ?? page;
     const readingScope = getReadingScope(book.chapters, requestPage);
-    const structureScope = skillId === 'mindmap' || skillId === 'knowledge-graph';
-    const requestChapter = structureScope && scope === 'section' ? readingScope.section
-      : structureScope && scope === 'chapter' ? readingScope.chapter
-      : quotedPages || artifactOverride ? book.chapters.filter(item => item.page <= requestPage).at(-1) : chapter;
+    const requestChapter = scope === 'section' ? readingScope.section
+      : scope === 'chapter' ? readingScope.chapter
+      : book.chapters.filter(item => item.page <= requestPage).at(-1);
     const quote = quotePages ? '引用来自 PDF 第 ' + quotePages.start + (quotePages.end === quotePages.start ? '' : '–' + quotePages.end) + ' 页：\n' + selectedText : selectedText;
     const requestedArtifact = artifactOverride ?? contextArtifact;
     const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].some(kind => kind === skillId || kind === requestedArtifact?.kind);
@@ -211,9 +216,10 @@ export default function App() {
     const abort=new AbortController(); controller.current=abort; setBusy(true);
     setMobileView('copilot');
     const userId=crypto.randomUUID(), assistantId=crypto.randomUUID();
-    setMessages(current=>[...current,{id:userId,role:'user',content:prompt,skillId,references:references.map(({id,title,url})=>({id,title,url}))},{id:assistantId,role:'assistant',content:'',skillId,status:'running',progress:'正在连接 Coding Agent…'}]);
+    const submittedPrompt = scope === 'range' ? `【教材 PDF 第 ${pageRange!.start}–${pageRange!.end} 页】\n${prompt}` : prompt;
+    setMessages(current=>[...current,{id:userId,role:'user',content:submittedPrompt,skillId,references:references.map(({id,title,url})=>({id,title,url}))},{id:assistantId,role:'assistant',content:'',skillId,status:'running',startedAt:Date.now(),progress:'请求已发送，正在准备课程任务…'}]);
     try {
-      await runSkill({skillId,referenceIds:references.map(item=>item.id),...(skillId==='slides' && templateId ? {templateId} : {}),book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:requestChapter,page:requestPage,scope,...(skillId==='knowledge-graph'?{knowledgeGraphDetail:knowledgeGraphDetail||'overview'}:{}),selectedText:artifactOverride?'':quote,pageText:requestPage===page?pageText:'',prompt,artifact:artifactOverride ?? contextArtifact,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
+      await runSkill({skillId,referenceIds:references.map(item=>item.id),...(skillId==='slides' && templateId ? {templateId} : {}),book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:requestChapter,page:requestPage,scope,...(scope==='range'?{pageRange}:{}),...(skillId==='knowledge-graph'?{knowledgeGraphDetail:knowledgeGraphDetail||'overview'}:{}),selectedText:!artifactOverride && scope==='selection'?quote:'',pageText:requestPage===page?pageText:'',prompt,artifact:artifactOverride ?? contextArtifact,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
         if(abort.signal.aborted || controller.current!==abort) return;
         if(event.type==='artifact') {
           const artifact=event.artifact;
@@ -312,7 +318,7 @@ export default function App() {
         </> : <div className="boot-state">{bootError ? <><BookOpen size={36}/><h2>先打开一本教材</h2><p>{bootError}</p><button className="primary-button" onClick={()=>fileInput.current?.click()}><Upload size={16}/>导入 PDF</button></> : <><LoaderCircle className="spin" size={28}/><p>正在准备你的课程空间…</p></>}</div>}
       </main>
 
-      {book && <CopilotPanel references={selectedReferences} referenceQuestionId={referenceQuestionId} onRemoveReference={id=>setSelectedReferences(current=>current.filter(item=>item.id!==id))} book={book} page={page} chapter={chapter} selectedText={selectedText} onClearSelection={clearSelection} contextArtifact={contextArtifact} onClearArtifact={()=>setContextArtifactId(null)} skills={skills} messages={messages} busy={busy || workspace.switching || moving} running={agentBusy} onSend={sendSkill} onStop={stopTask} onReset={()=>void newConversation()} onHistory={()=>void openHistory()} onArtifact={openArtifact} onSettings={()=>setShowSettings(true)}/>}
+      {book && <CopilotPanel references={selectedReferences} referenceQuestionId={referenceQuestionId} onRemoveReference={id=>setSelectedReferences(current=>current.filter(item=>item.id!==id))} book={book} page={page} chapter={chapter} selectedText={selectedText} onClearSelection={clearSelection} onShowTextbook={()=>{setActiveTab('textbook');setMobileView('reader');}} contextArtifact={contextArtifact} onClearArtifact={()=>setContextArtifactId(null)} skills={skills} messages={messages} busy={busy || workspace.switching || moving} running={agentBusy} onSend={(id,prompt,scope,detail,template,range)=>void sendSkill(id,prompt,scope,detail,template,undefined,range)} onStop={stopTask} onReset={()=>void newConversation()} onHistory={()=>void openHistory()} onArtifact={openArtifact} onSettings={()=>setShowSettings(true)}/>}
     </div>
 
     <dialog className="settings-dialog" ref={settingsDialog} onCancel={()=>setShowSettings(false)} onClick={event=>{if(event.target===event.currentTarget)setShowSettings(false);}}>

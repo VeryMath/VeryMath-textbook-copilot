@@ -1,5 +1,5 @@
 export type SkillId = 'chat' | 'textbook-parse' | 'explain' | 'quiz' | 'mindmap' | 'knowledge-graph' | 'slides' | 'video';
-export type Scope = 'page' | 'section' | 'chapter' | 'selection' | 'book';
+export type Scope = 'page' | 'section' | 'chapter' | 'selection' | 'range' | 'book';
 export type KnowledgeGraphDetail = 'overview' | 'detailed';
 
 export interface KnowledgeGraphEvidence {
@@ -42,7 +42,10 @@ export interface KnowledgeGraphEdge {
   evidence?: KnowledgeGraphEvidence[];
 }
 
+export interface PageRange { start: number; end: number }
+
 export interface ArtifactSource {
+  pageRange?: PageRange;
   scope: Scope;
   page: number;
   chapterId?: string;
@@ -119,6 +122,7 @@ export interface SkillRequest {
   chapter?: Chapter;
   page: number;
   scope: Scope;
+  pageRange?: PageRange;
   selectedText: string;
   pageText: string;
   prompt: string;
@@ -162,6 +166,7 @@ export interface Message {
   content: string;
   references?: Pick<CourseReference, 'id' | 'title' | 'url'>[];
   skillId?: SkillId;
+  startedAt?: number;
   status?: 'running' | 'done' | 'error' | 'stopped';
   progress?: string;
   artifacts?: Artifact[];

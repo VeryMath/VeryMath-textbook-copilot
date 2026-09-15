@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -42,7 +43,7 @@ function repairMathFence(content: string) {
   }).join('\n');
 }
 
-export default function Markdown({ children, book }: { children: string; book?: Book }) {
+function Markdown({ children, book }: { children: string; book?: Book }) {
   // Codex 常用 \(…\) 和 \[…\]；统一成阅读器支持的数学分隔符，并保留代码内容。
   const content = repairMathFence(children).replace(/(`+)[\s\S]*?\1|(~{3,})[\s\S]*?\2|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g,
     (match, _backticks, _tildes, block: string | undefined, inline: string | undefined) =>
@@ -76,3 +77,5 @@ export default function Markdown({ children, book }: { children: string; book?: 
     img: ({ src, alt }) => <img src={courseUrl(src)} alt={alt || ''} loading="lazy" />,
   }}>{content}</ReactMarkdown></div>;
 }
+
+export default memo(Markdown);

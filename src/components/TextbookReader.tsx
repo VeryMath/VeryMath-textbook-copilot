@@ -227,7 +227,7 @@ export default function TextbookReader({ book, page, navigationId, onPageChange,
       if (cancelled) return;
       const text = content.items.map(item => 'str' in item ? item.str + (item.hasEOL ? '\n' : '') : '').join('').trim();
       callbacks.current.onTextChange(book.id, currentPage, text);
-      if (!text) setTextNote('这一页没有可选文字；扫描教材需要接入文字识别功能。');
+      if (!text) setTextNote('这一页没有可选文字，可在 Copilot 中用“指定页码”处理扫描教材。');
     }).catch(() => {
       if (!cancelled) setTextNote('这一页的文字暂时无法提取，仍可阅读原文。');
     });
@@ -242,6 +242,20 @@ export default function TextbookReader({ book, page, navigationId, onPageChange,
       setPageInput(String(currentPage));
     }
   }
+
+  useEffect(() => {
+    let frame = 0;
+    const capture = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        // Native selection handles and keyboard selection can finish after pointerup.
+        // Preserve the quoted text when focus moves to the Copilot composer.
+        if (window.getSelection()?.toString().trim()) captureSelection();
+      });
+    };
+    document.addEventListener('selectionchange', capture);
+    return () => { document.removeEventListener('selectionchange', capture); cancelAnimationFrame(frame); };
+  }, [book.id]);
 
   function captureSelection() {
     const selection = window.getSelection();
