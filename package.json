@@ -16,9 +16,6 @@
     "desktop:dist": "npm run build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "^0.76.0",
-    "@agentclientprotocol/codex-acp": "^1.11.0",
-    "@agentclientprotocol/sdk": "^1.4.0",
     "@dagrejs/dagre": "^1.1.5",
     "@earendil-works/pi-ai": "^0.85.1",
     "@earendil-works/pi-coding-agent": "^0.85.1",
