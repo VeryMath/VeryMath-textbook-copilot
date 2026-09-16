@@ -4,6 +4,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname, resolve, sep } from 'node:path';
 import { createApiMiddleware, disposeAgent } from './api.mjs';
+import { disposeReferenceExtractions } from './course-store.mjs';
 
 const distPath = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const api = createApiMiddleware();
@@ -76,10 +77,26 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || '127.0.0.1';
 server.once('close', disposeAgent);
 process.once('exit', disposeAgent);
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.once(signal, () => { disposeAgent(); server.close(); });
+let closing = false;
+function shutdown() {
+  if (closing) return;
+  closing = true;
+  disposeAgent();
+  disposeReferenceExtractions();
+  server.close(() => { if (process.connected) process.disconnect(); });
+  const timeout = setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 4000);
+  timeout.unref();
 }
-server.listen(port, host, () => console.log(`课程工作台：http://${host}:${port}`));
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, shutdown);
+if (process.send) {
+  process.on('message', message => { if (message?.type === 'shutdown') shutdown(); });
+  process.once('disconnect', shutdown);
+}
+server.listen(port, host, () => {
+  const actualPort = server.address().port;
+  console.log(`课程工作台：http://${host}:${actualPort}`);
+  process.send?.({ type: 'ready', port: actualPort });
+});
 server.on('error', (error) => {
   console.error(`启动失败：${error.message}`);
   process.exitCode = 1;

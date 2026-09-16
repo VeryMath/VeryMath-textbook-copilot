@@ -37,6 +37,25 @@ Coding Agent：理解要求 → 读取教材 → 调用一个或多个 Skill
 
 ## 快速开始
 
+### macOS 桌面版
+
+打开 `VeryMath-0.1.0-arm64.dmg`，将 VeryMath 拖入 Applications，然后从应用程序中打开。当前安装包适用于 Apple 芯片 Mac，要求 macOS 12 或更新版本。桌面版自带运行环境，启动后自动打开课程窗口。
+
+默认课程目录为 `~/.course-copilot`。菜单「文件 → 选择课程数据目录…」可连接已有课程目录，选择后应用重新启动；「打开课程数据目录」可在 Finder 中查看教材与生成资料。关闭窗口后可从 Dock 再次打开，使用 `Command-Q` 退出应用和本地服务。
+
+课程助手使用所选 Agent 的账号与模型配置。生成 LaTeX 课件需要本机 XeLaTeX；扫描文字识别需要 Tesseract、中文语言数据及 Poppler。桌面版保留工作区设置中的环境检查和连接入口。
+
+源码打包命令：
+
+```bash
+npm ci
+npm run desktop:dist
+```
+
+生成的 `.app` 位于 `release/mac-arm64/VeryMath.app`，磁盘映像位于 `release/`。`npm run desktop` 用于本机开发运行，`npm run desktop:pack` 生成应用目录。当前配置使用临时签名；向其他用户分发正式版本时，需要配置 Apple Developer ID 签名和公证。桌面实现及打包说明见 [macOS 桌面版](docs/macos-desktop.md)。
+
+### 浏览器版
+
 首次使用建议先读 [用户手册](docs/user-guide.md)，重点是安装与启动；其余功能由所选 Agent 自主完成。
 
 最省事的安装方式是把下面这段发给你使用的 Coding Agent，它会自动完成依赖安装、内置 Skill 配置、Agent 连接和服务启动，并返回访问地址：

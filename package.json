@@ -10,7 +10,10 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "start": "node server/index.mjs",
-    "migrate": "node server/migrate-layout.mjs"
+    "migrate": "node server/migrate-layout.mjs",
+    "desktop": "npm run build && electron .",
+    "desktop:pack": "npm run build && electron-builder --mac --arm64 --dir --publish never",
+    "desktop:dist": "npm run build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.76.0",
@@ -21,7 +24,7 @@
     "json5": "^2.2.3",
     "katex": "^0.16.22",
     "lucide-react": "^0.468.0",
-    "pdfjs-dist": "5.6.205",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
@@ -34,7 +37,63 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
     "typescript": "^5.9.2",
     "vite": "^6.3.6"
+  },
+  "main": "desktop/main.cjs",
+  "description": "VeryMath 智慧教材桌面应用",
+  "author": "VeryMath",
+  "build": {
+    "appId": "org.verymath.textbook",
+    "productName": "VeryMath",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "server/**/*",
+      "shared/**/*",
+      "skills/**/*",
+      "desktop/main.cjs",
+      "package.json",
+      "LICENSE"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "desktop/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "notarize": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "minimumSystemVersion": "12.0"
+    },
+    "dmg": {
+      "title": "VeryMath",
+      "artifactName": "VeryMath-${version}-${arch}.${ext}",
+      "writeUpdateInfo": false,
+      "contents": [
+        {
+          "x": 140,
+          "y": 200
+        },
+        {
+          "x": 440,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
   }
 }

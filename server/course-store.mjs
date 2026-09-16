@@ -19,6 +19,10 @@ const referenceExtractions = new Map();
 let referenceExtractionQueue = Promise.resolve();
 const pdfLimit = 100 * 1024 * 1024;
 
+export function disposeReferenceExtractions() {
+  for (const job of referenceExtractions.values()) job.controller.abort();
+}
+
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function positive(value) { return Number.isSafeInteger(value) && value > 0; }
