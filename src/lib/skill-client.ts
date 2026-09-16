@@ -1,32 +1,20 @@
 import type { SkillEvent, SkillInfo, SkillRequest } from './types';
 
 export type AgentProvider = string;
-export type AgentConnectionMode = 'acp' | 'native' | 'cli';
-export interface AgentLaunchSettings { mode?: AgentConnectionMode; executable?: string; args?: string[]; modelFlag?: string }
 
 export interface AgentStatus {
   connected: boolean;
-  phase: 'disconnected' | 'connecting' | 'login-required' | 'connected' | 'error';
+  phase: 'connected' | 'not-configured' | 'disconnected';
   name: string;
   message: string;
-  installed: boolean;
-  signedIn: boolean;
-  accountLabel: string;
-  executable: string;
-  note: string;
-  busy: boolean;
+  provider: AgentProvider;
   providers: { id: AgentProvider; name: string }[];
-  connectionModes: { id: AgentConnectionMode; name: string }[];
-  defaultCommand: string;
-  bundledAdapter: boolean;
-  modelInput: 'select' | 'manual';
-  authMethods: { id: string; name: string }[];
-  config: { provider: AgentProvider; mode: AgentConnectionMode; executable: string; args: string[]; modelFlag: string; model: string; skillPaths: Record<string, string> };
-  latex?: { engine: string; version: string; missing: string[]; preferredMathFonts: boolean; ready: boolean; message: string };
   models: { id: string; name: string; isDefault: boolean }[];
-  modelNote: string;
-  login?: { loginId: string; authUrl?: string; command?: string; manual?: boolean };
+  config: { provider: AgentProvider; model: string; skillPaths: Record<string, string> };
   skills: (Omit<SkillInfo, 'available'> & { path: string | null; configured: boolean })[];
+  busy: boolean;
+  latex?: { engine: string; version: string; missing: string[]; preferredMathFonts: boolean; ready: boolean; message: string };
+  modelNote: string;
 }
 
 async function responseError(response: Response): Promise<Error> {
@@ -53,20 +41,23 @@ export function getAgentStatus(signal?: AbortSignal): Promise<AgentStatus> {
   return getJson('/api/agent/status', signal);
 }
 
-async function agentAction(action: string, value: unknown = {}): Promise<AgentStatus> {
+async function agentAction(action: string, value: unknown = {}, method = 'POST'): Promise<AgentStatus> {
   const response = await fetch(`/api/agent/${action}`, {
-    method: action === 'config' ? 'PATCH' : 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<AgentStatus>;
 }
 
-export const connectAgent = (settings: AgentLaunchSettings) => agentAction('connect', settings);
-export const disconnectAgent = () => agentAction('disconnect');
-export const startAgentLogin = (authMethod?: string) => agentAction('login', {authMethod});
-export const cancelAgentLogin = () => agentAction('login/cancel');
-export const saveAgentConfig = (value: AgentLaunchSettings & { provider?: AgentProvider; model?: string; skillPaths?: Record<string, string> }) => agentAction('config', value);
+export const configureProvider = (config: { provider?: string; apiKey?: string; baseUrl?: string; model?: string; skillPaths?: Record<string, string> }) => agentAction('configure', config);
+export const saveAgentConfig = configureProvider;
+
+export async function listModels(providerId: string): Promise<{ id: string; name: string; isDefault: boolean }[]> {
+  const response = await fetch(`/api/agent/models?provider=${encodeURIComponent(providerId)}`);
+  if (!response.ok) throw await responseError(response);
+  return response.json();
+}
 
 export function skillsFromStatus(status: AgentStatus): SkillInfo[] {
   return [
