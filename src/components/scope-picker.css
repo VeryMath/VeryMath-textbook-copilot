@@ -10,6 +10,11 @@
 .selection-help p{margin:0 0 6px;}
 .selection-help button{font-size:12px;margin-right:12px;}
 .scope-summary{margin:6px 0 0;}
+.scope-tags{display:flex;flex-wrap:wrap;gap:5px;}
+.scope-tag{padding:3px 9px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-secondary);font-size:12px;line-height:1.4;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.scope-tag:hover:not(:disabled){border-color:var(--accent-border);color:var(--text);}
+.scope-tag.active{background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);font-weight:600;}
+.scope-tag:disabled{opacity:.5;cursor:default;}
 .task-progress .message-progress{min-width:0;align-items:flex-start;}
 .task-progress .message-progress svg{flex-shrink:0;margin-top:3px;}
 .task-progress .message-progress span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

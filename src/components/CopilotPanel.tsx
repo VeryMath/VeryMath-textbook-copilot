@@ -82,12 +82,11 @@ export default function CopilotPanel(props: Props) {
   return <aside className="copilot-panel" aria-label="课程 Copilot" id="course-copilot">
     <header className="copilot-header">
       <div className="copilot-title"><span className="copilot-symbol"><Sparkles size={19}/></span><span>Copilot <small>课程学习助手</small></span></div>
+      <div className="context-card"><BookOpen size={15}/><div><span>正在一起阅读</span><strong>{chapter?.title || book.title}</strong></div><span className="context-page">P.{page}</span></div>
       <div className="copilot-header-actions"><button className="icon-button" title="历史对话" aria-label="历史对话" onClick={props.onHistory} disabled={busy}><History size={17}/></button><button className="icon-button" title="新建对话" aria-label="新建对话" onClick={props.onReset} disabled={busy || !messages.length}><Plus size={19}/></button></div>
     </header>
 
     <div className="copilot-scroll" ref={conversation}>
-      <div className="context-card"><BookOpen size={15}/><div><span>正在一起阅读</span><strong>{chapter?.title || book.title}</strong></div><span className="context-page">P.{page}</span></div>
-
       <section className="tool-section" aria-label="课程工具">
         <button className="section-label tool-heading" onClick={() => setToolsOpen(!toolsOpen)} aria-expanded={toolsOpen}><span>课程工具 <small>SKILLS</small></span><ChevronDown size={15} className={toolsOpen ? '' : 'rotated'}/></button>
         {toolsOpen && <div className="skill-grid">{tools.map(tool => <button key={tool.id} className={`skill-tile ${activeSkill === tool.id ? 'selected' : ''}`} aria-pressed={activeSkill === tool.id} onClick={() => { setActiveSkill(tool.id); setPrompt(tool.prompt); input.current?.focus(); }} title={skills.find(item => item.id === tool.id)?.available ? tool.subtitle : `${tool.title}尚待接入，可以先填写要求`}>
@@ -130,10 +129,7 @@ export default function CopilotPanel(props: Props) {
           </select>
           {templateId && <small>{selectedInfo?.templates?.find(template => template.id === templateId)?.description}</small>}
         </label>}
-        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<label className="scope-picker"><select aria-label="操作范围" disabled={busy} value={currentScope} onChange={event => setScope(event.target.value as Scope)}>
-          <option value="page">当前页</option><option value="section">当前节</option><option value="chapter">当前章</option>
-          <option value="range">指定页码</option><option value="selection">选中文字</option><option value="book">整本教材</option><option value="none">无范围</option>
-        </select><ChevronDown size={12}/></label></div>
+        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<div className="scope-tags">{([['page','当前页'],['section','当前节'],['chapter','当前章'],['range','指定页码'],['selection','选中文字'],['book','整本教材'],['none','无范围']] as const).map(([value,label]) => <button key={value} className={`scope-tag ${currentScope===value?'active':''}`} disabled={busy} onClick={()=>setScope(value)}>{label}</button>)}</div></div>
         {currentScope === 'range' && <fieldset className="page-range-picker" disabled={busy}>
           <legend>教材 PDF 页码</legend>
           <div><label>起始页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="起始页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeStart} onChange={event=>setRangeStart(event.target.value)}/></label><span>—</span><label>结束页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="结束页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeEnd} onChange={event=>setRangeEnd(event.target.value)}/></label></div>
