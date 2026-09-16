@@ -20,6 +20,8 @@
     "@agentclientprotocol/codex-acp": "^1.11.0",
     "@agentclientprotocol/sdk": "^1.4.0",
     "@dagrejs/dagre": "^1.1.5",
+    "@earendil-works/pi-ai": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@xyflow/react": "^12.8.4",
     "json5": "^2.2.3",
     "katex": "^0.16.22",
