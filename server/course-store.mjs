@@ -163,7 +163,9 @@ export function initializeStore() {
     if (await readJson(settingsPath) === undefined) await writeJson(settingsPath, {});
     else await chmod(settingsPath, 0o600);
     if ((await courseRecords()).length) return;
-    const bundled = JSON.parse(await readFile(new URL('../src/data/textbook.json', import.meta.url), 'utf8'));
+    let bundled;
+    try { bundled = JSON.parse(await readFile(new URL('../src/data/textbook.json', import.meta.url), 'utf8')); }
+    catch (error) { if (error.code === 'ENOENT') return; throw error; }
     const original = fileURLToPath(new URL(`../${bundled.filename}`, import.meta.url));
     try { await stat(original); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
     const courseDir = await reserveCourse(courseTitle(bundled.title));

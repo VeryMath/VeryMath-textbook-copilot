@@ -202,6 +202,33 @@ export default function App() {
       if (error) { setToast(error); return; }
     }
     if (scope === 'selection' && !selectedText.trim()) { setToast('请先在教材上拖选文字，或改用指定页码。'); return; }
+    if (scope === 'none') {
+      const abort=new AbortController(); controller.current=abort; setBusy(true);
+      setMobileView('copilot');
+      const userId=crypto.randomUUID(), assistantId=crypto.randomUUID();
+      setMessages(current=>[...current,{id:userId,role:'user',content:prompt,skillId},{id:assistantId,role:'assistant',content:'',skillId,status:'running',startedAt:Date.now(),progress:'请求已发送…'}]);
+      try {
+        await runSkill({skillId,referenceIds:[],book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:undefined,page:1,scope:'none',selectedText:'',pageText:'',prompt,artifact:undefined,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
+          if(abort.signal.aborted || controller.current!==abort) return;
+          if(event.type==='artifact') {
+            const artifact=event.artifact;
+            setArtifacts(current=>[...current.filter(item=>item.id!==artifact.id),artifact]); openArtifact(artifact);
+          }
+          setMessages(current=>current.map(message=>{
+            if(message.id!==assistantId) return message;
+            if(event.type==='progress') return {...message,progress:event.message};
+            if(event.type==='text') return {...message,content:message.content+event.content};
+            if(event.type==='artifact') return {...message,artifacts:[...(message.artifacts||[]).filter(item=>item.id!==event.artifact.id),event.artifact]};
+            if(event.type==='done') return {...message,status:'done',progress:undefined};
+            if(event.type==='error') return {...message,status:'error',progress:event.message};
+            return message;
+          }));
+        },abort.signal);
+      } catch(error) {
+        if(!abort.signal.aborted && controller.current===abort) setMessages(current=>current.map(message=>message.id===assistantId?{...message,status:'error',progress:error instanceof Error?error.message:'学习工具暂时无法连接。'}:message));
+      } finally { if(controller.current===abort) {controller.current=null;setBusy(false);} }
+      return;
+    }
     const quotePages = selectedText ? selectionPages : null;
     const quotedPages = scope === 'selection' ? quotePages : null;
     const requestPage = scope === 'range' ? pageRange!.start : artifactOverride?.source?.page ?? quotedPages?.start ?? page;
@@ -258,9 +285,20 @@ export default function App() {
 
   return <div className="app-shell">
     <header className="app-header">
-      <button className="brand" onClick={()=>setShowBooks(true)} aria-label="打开课程书架"><span className="brand-mark"><LibraryBig size={23} strokeWidth={1.65}/></span><span className="brand-name">VeryMath<span>智慧教材</span></span></button>
+      <button className="brand" onClick={()=>setShowBooks(true)} aria-label="打开课程书架"><span className="brand-mark"><img src="/brand-icon.png" alt="VeryMath"/></span></button>
       <div className="header-divider"/>
+      <button className="icon-button outline-open-button" aria-label="展开教材目录" onClick={()=>setOutlineOpen(!outlineOpen)}><PanelLeft size={17}/></button>
       <button className="current-course" onClick={()=>setShowBooks(true)}><BookOpen size={16}/><span>{book?.title || '我的课程'}</span><ChevronDown size={14}/></button>
+      <nav className="header-tabs" aria-label="教材与学习资料">
+        <button className={`reading-tab ${activeTab==='textbook'?'active':''}`} onClick={()=>setActiveTab('textbook')}><BookOpen size={16}/>教材</button>
+        <button className={`reading-tab ${activeTab==='references'?'active':''}`} onClick={()=>{setActiveTab('references');setContextArtifactId(null);}}><LibraryBig size={16}/>辅助资料</button>
+        <button className={`reading-tab ${activeTab==='materials'?'active':''}`} onClick={()=>setActiveTab('materials')}><FolderOpen size={16}/>学习资料<span className="count-badge">{artifacts.filter(item=>!Object.values(sectionKinds).includes(item.kind as SectionKind)).length}</span></button>
+        <button className={`reading-tab ${activeTab==='mindmaps'?'active':''}`} onClick={()=>setActiveTab('mindmaps')}><Waypoints size={16}/>思维导图<span className="count-badge">{artifacts.filter(item=>item.kind==='mindmap').length}</span></button>
+        <button className={`reading-tab ${activeTab==='knowledge-graphs'?'active':''}`} onClick={()=>setActiveTab('knowledge-graphs')}><Network size={16}/>知识图谱<span className="count-badge">{artifacts.filter(item=>item.kind==='knowledge-graph').length}</span></button>
+        <button className={`reading-tab ${activeTab==='quizzes'?'active':''}`} onClick={()=>setActiveTab('quizzes')}><FileText size={16}/>练习卡片<span className="count-badge">{artifacts.filter(item=>item.kind==='quiz').length}</span></button>
+        <button className={`reading-tab ${activeTab==='slides'?'active':''}`} onClick={()=>setActiveTab('slides')}><Presentation size={16}/>课件<span className="count-badge">{artifacts.filter(item=>item.kind==='slides').length}</span></button>
+        {openTabs.map(id=>{const artifact=artifacts.find(item=>item.id===id);return artifact?<div className={`result-tab ${activeTab===id?'active':''}`} key={id}><button title={artifact.title} onClick={()=>openArtifact(artifact)}>{artifact.title}</button><button aria-label={`关闭${artifact.title}`} onClick={()=>closeTab(id)}><X size={12}/></button></div>:null;})}
+      </nav>
       <div className="header-actions"><span className="workspace-label"><span className={`status-dot ${workspace.saveError ? '' : 'online'}`}/>{workspace.saveError ? '未保存' : workspace.pending ? '正在保存…' : '已保存到本机'}</span><button className="text-button import-button" disabled={importing || busy || workspace.switching || moving} onClick={()=>fileInput.current?.click()}><Upload size={15}/><span>{importing ? '正在导入…' : '导入教材'}</span></button><button className="icon-button settings-button" title="工作区设置" aria-label="工作区设置" onClick={()=>setShowSettings(true)}><Settings2 size={19}/></button></div>
       <input ref={fileInput} type="file" accept="application/pdf,.pdf" hidden onChange={event=>void importBook(event.target.files?.[0])}/>
     </header>
@@ -292,20 +330,8 @@ export default function App() {
       </aside>
 
       <main id="course-reading" className="reading-panel">
-        <div className="reading-tabs" aria-label="教材与学习资料">
-          <button className="icon-button outline-open-button" aria-label="展开教材目录" onClick={()=>setOutlineOpen(!outlineOpen)}><PanelLeft size={17}/></button>
-          <button className={`reading-tab ${activeTab==='textbook'?'active':''}`} onClick={()=>setActiveTab('textbook')}><BookOpen size={16}/>教材</button>
-          <button className={`reading-tab ${activeTab==='references'?'active':''}`} onClick={()=>{setActiveTab('references');setContextArtifactId(null);}}><LibraryBig size={16}/>辅助资料</button>
-          <button className={`reading-tab ${activeTab==='materials'?'active':''}`} onClick={()=>setActiveTab('materials')}><FolderOpen size={16}/>学习资料<span className="count-badge">{artifacts.filter(item=>!Object.values(sectionKinds).includes(item.kind as SectionKind)).length}</span></button>
-          <button className={`reading-tab ${activeTab==='mindmaps'?'active':''}`} onClick={()=>setActiveTab('mindmaps')}><Waypoints size={16}/>思维导图<span className="count-badge">{artifacts.filter(item=>item.kind==='mindmap').length}</span></button>
-          <button className={`reading-tab ${activeTab==='knowledge-graphs'?'active':''}`} onClick={()=>setActiveTab('knowledge-graphs')}><Network size={16}/>知识图谱<span className="count-badge">{artifacts.filter(item=>item.kind==='knowledge-graph').length}</span></button>
-          <button className={`reading-tab ${activeTab==='quizzes'?'active':''}`} onClick={()=>setActiveTab('quizzes')}><FileText size={16}/>练习卡片<span className="count-badge">{artifacts.filter(item=>item.kind==='quiz').length}</span></button>
-          <button className={`reading-tab ${activeTab==='slides'?'active':''}`} onClick={()=>setActiveTab('slides')}><Presentation size={16}/>课件<span className="count-badge">{artifacts.filter(item=>item.kind==='slides').length}</span></button>
-          {openTabs.map(id=>{const artifact=artifacts.find(item=>item.id===id);return artifact?<div className={`result-tab ${activeTab===id?'active':''}`} key={id}><button title={artifact.title} onClick={()=>openArtifact(artifact)}>{artifact.title}</button><button aria-label={`关闭${artifact.title}`} onClick={()=>closeTab(id)}><X size={12}/></button></div>:null;})}
-          <button className={`icon-button bookmark-button ${bookmarks.includes(page)?'marked':''}`} disabled={!book} onClick={()=>{setBookmarks(current=>current.includes(page)?current.filter(number=>number!==page):[...current,page]);setToast(bookmarks.includes(page)?'已移除书签。':`已收藏第 ${page} 页。`);}} aria-label={bookmarks.includes(page)?'移除本页书签':'收藏本页'} title={bookmarks.includes(page)?'移除本页书签':'收藏本页'}><Bookmark size={17} fill={bookmarks.includes(page)?'currentColor':'none'}/></button>
-        </div>
         {book ? <>
-          <div className={`reader-mount ${activeTab==='textbook'?'':'hidden'}`}><TextbookReader book={book} page={page} navigationId={pageNavigationId} onPageChange={goToPage} onVisiblePageChange={visiblePageChanged} onDocumentReady={documentReady} onTextChange={textReady} onSelectionChange={selectionReady}/></div>
+          <div className={`reader-mount ${activeTab==='textbook'?'':'hidden'}`}><TextbookReader book={book} page={page} navigationId={pageNavigationId} onPageChange={goToPage} onVisiblePageChange={visiblePageChanged} onDocumentReady={documentReady} onTextChange={textReady} onSelectionChange={selectionReady} bookmarked={bookmarks.includes(page)} onToggleBookmark={()=>{setBookmarks(current=>current.includes(page)?current.filter(number=>number!==page):[...current,page]);setToast(bookmarks.includes(page)?'已移除书签。':`已收藏第 ${page} 页。`);}}/></div>
           <div className={`reader-mount ${activeTab==='references'?'':'hidden'}`}><CourseReferences key={book.id} book={book} busy={agentBusy || workspace.switching || moving || importing} onWorkingChange={setReferencesWorking} selected={selectedReferences} onSelect={setSelectedReferences} onAsk={()=>{setContextArtifactId(null);clearSelection();setReferenceQuestionId(value=>value+1);setMobileView('copilot');}}/></div>
           {(['materials','mindmaps','knowledge-graphs','quizzes','slides'] as ReaderSection[]).includes(activeTab as ReaderSection) && <MaterialsLibrary artifacts={artifacts} kind={sectionKind(activeTab as ReaderSection)} excludeKinds={activeTab==='materials'?Object.values(sectionKinds):undefined} book={book} onOpen={openArtifact}/>}
           {activeArtifact && <ArtifactViewer key={activeArtifact.id} artifact={activeArtifact} onPage={goToPage} book={book} onQuizAction={busy || workspace.switching || moving ? undefined : (question, answer, action) => {

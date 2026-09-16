@@ -60,7 +60,7 @@ function checkRequest(request) {
     || typeof request.skillId !== 'string' || !request.book
     || !['id', 'title', 'filename'].every((key) => typeof request.book[key] === 'string')
     || !Number.isInteger(request.page) || request.page < 1
-    || !['page', 'section', 'chapter', 'selection', 'range', 'book'].includes(request.scope)
+    || !['page', 'section', 'chapter', 'selection', 'range', 'book', 'none'].includes(request.scope)
     || (request.knowledgeGraphDetail !== undefined && !['overview', 'detailed'].includes(request.knowledgeGraphDetail))
     || !['selectedText', 'pageText', 'prompt'].every((key) => typeof request[key] === 'string')
     || !Array.isArray(request.history)

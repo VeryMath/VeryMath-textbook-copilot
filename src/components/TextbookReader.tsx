@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, LoaderCircle, Maximize, Minus, Plus, RotateCw } from 'lucide-react';
+import { AlertCircle, Bookmark, ChevronLeft, ChevronRight, ExternalLink, LoaderCircle, Maximize, Minus, Plus, RotateCw } from 'lucide-react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -18,6 +18,8 @@ interface TextbookReaderProps {
   onDocumentReady: (data: { totalPages: number; chapters: Chapter[] }) => void;
   onTextChange: (bookId: string, page: number, text: string) => void;
   onSelectionChange: (text: string, pages?: { start: number; end: number }) => void;
+  bookmarked: boolean;
+  onToggleBookmark: () => void;
 }
 
 async function readOutline(pdf: PDFDocumentProxy): Promise<Chapter[]> {
@@ -56,7 +58,7 @@ function pdfErrorMessage(error: unknown) {
   return '教材暂时无法显示，请重试，或在新窗口打开原 PDF。';
 }
 
-export default function TextbookReader({ book, page, navigationId, onPageChange, onVisiblePageChange, onDocumentReady, onTextChange, onSelectionChange }: TextbookReaderProps) {
+export default function TextbookReader({ book, page, navigationId, onPageChange, onVisiblePageChange, onDocumentReady, onTextChange, onSelectionChange, bookmarked, onToggleBookmark }: TextbookReaderProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<PDFViewer | null>(null);
@@ -287,6 +289,9 @@ export default function TextbookReader({ book, page, navigationId, onPageChange,
           </label>
           <button type="button" className="reader-icon-button" aria-label="下一页" title="下一页" onClick={() => onPageChange(currentPage + 1)} disabled={!viewerReady || currentPage >= (totalPages ?? 1)}>
             <ChevronRight size={17} />
+          </button>
+          <button type="button" className={`reader-icon-button${bookmarked ? ' is-marked' : ''}`} aria-label={bookmarked ? '移除本页书签' : '收藏本页'} title={bookmarked ? '移除本页书签' : '收藏本页'} onClick={onToggleBookmark} disabled={!viewerReady}>
+            <Bookmark size={16} fill={bookmarked ? 'currentColor' : 'none'} />
           </button>
         </div>
         <div className="reader-zoom-controls">

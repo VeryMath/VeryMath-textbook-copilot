@@ -68,7 +68,7 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
 
   async function saveProvider() {
     if (!provider) return;
-    await perform('保存配置', () => configureProvider({ provider, ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}) }), '配置已保存。');
+    await perform('保存配置', () => configureProvider({ provider, ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}), ...(provider === 'custom' && modelDraft ? { model: modelDraft } : {}) }), '配置已保存。');
   }
 
   const step = connected ? 3 : provider ? 2 : 1;
@@ -83,9 +83,10 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
     <label className="agent-field agent-choice">模型服务 Provider
       <select aria-label="Provider" value={provider} disabled={locked || !status} onChange={event => setProvider(event.target.value)}>
         {!status && <option value="">正在读取…</option>}
-        {status?.providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        {status?.providers.filter(p => p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        <option value="custom">自定义 API（OpenAI 兼容）</option>
       </select>
-      <small>选择 LLM 服务商，填写 API Key 后即可使用。</small>
+      <small>选择 LLM 服务商，或选"自定义 API"填入任意 OpenAI 兼容端点。</small>
     </label>
 
     <section className={`agent-card ${connected ? 'is-connected' : ''}`} aria-label="模型配置">
@@ -106,18 +107,21 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
         <small>从模型服务商获取 API Key，保存在本机 agent 目录中。</small>
       </label>
 
-      <label className="agent-field">Base URL（可选）
-        <input aria-label="Base URL" value={baseUrl} disabled={locked} onChange={event => setBaseUrl(event.target.value)} placeholder="留空使用默认端点" autoComplete="off" spellCheck={false}/>
-        <small>使用自定义端点或代理时填写，如 OpenAI 兼容服务。</small>
+      <label className="agent-field">Base URL{provider === 'custom' ? '' : '（可选）'}
+        <input aria-label="Base URL" value={baseUrl} disabled={locked} onChange={event => setBaseUrl(event.target.value)} placeholder={provider === 'custom' ? 'https://api.example.com/v1' : '留空使用默认端点'} autoComplete="off" spellCheck={false}/>
+        <small>{provider === 'custom' ? 'OpenAI 兼容 API 的完整端点地址。' : '使用自定义端点或代理时填写。'}</small>
       </label>
 
-      <label className="agent-field">使用模型
+      {provider === 'custom' ? <label className="agent-field">模型名称
+        <input aria-label="模型名称" value={modelDraft} disabled={locked} onChange={event => setModelDraft(event.target.value)} placeholder="gpt-4o / deepseek-chat / ..." autoComplete="off" spellCheck={false}/>
+        <small>填入 API 支持的模型 ID，保存后生效。</small>
+      </label> : <label className="agent-field">使用模型
         <select aria-label="使用模型" value={modelDraft} disabled={locked || !connected} onChange={event => { setModelDraft(event.target.value); void perform('保存模型', () => saveAgentConfig({ model: event.target.value }), '模型已保存。'); }}>
           <option value="">跟随默认</option>
           {models.map(m => <option key={m.id} value={m.id}>{m.name}{m.isDefault ? ' · 默认' : ''}</option>)}
         </select>
         <small>{connected ? status?.modelNote || '选择模型后即可提问。' : '配置 API Key 后可选择模型。'}</small>
-      </label>
+      </label>}
 
       <div className="agent-vision-note">
         <p>读取教材截图、扫描页和图表，需要模型支持图片输入。</p>

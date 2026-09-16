@@ -57,7 +57,10 @@
       "server/**/*",
       "shared/**/*",
       "skills/**/*",
+      "src/data/**/*",
       "desktop/main.cjs",
+      "desktop/icon.icns",
+      "desktop/icon.svg",
       "package.json",
       "LICENSE"
     ],

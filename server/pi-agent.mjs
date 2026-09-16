@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, readFile, rm, mkdir } from 'node:fs/promises';
+import { access, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
@@ -17,6 +17,7 @@ export const skillsCatalog = [...tutoringSkills, ...structureSkills, ...material
 
 let modelRuntime = null;
 let agentDir = null;
+let dataDir = null;
 let activeRun = false;
 let savedProvider = 'anthropic';
 let savedModel = '';
@@ -36,6 +37,7 @@ async function preferences() {
 }
 
 export async function initModelRuntime(dataDirectory) {
+  dataDir = dataDirectory;
   agentDir = join(dataDirectory, 'agent');
   await mkdir(agentDir, { recursive: true, mode: 0o700 });
   modelRuntime = await ModelRuntime.create({
@@ -48,6 +50,15 @@ export async function initModelRuntime(dataDirectory) {
   if (saved.model) savedModel = saved.model;
 }
 
+async function reloadModelRuntime() {
+  if (!dataDir) return;
+  modelRuntime = await ModelRuntime.create({
+    authPath: join(agentDir, 'auth.json'),
+    modelsPath: join(agentDir, 'models.json'),
+    modelsStorePath: join(agentDir, 'models-store.json'),
+  });
+}
+
 export async function getPiAgentStatus(refresh = false) {
   if (!modelRuntime) throw new Error('ModelRuntime 尚未初始化。');
   const saved = await preferences();
@@ -58,13 +69,22 @@ export async function getPiAgentStatus(refresh = false) {
   let connected = false;
   let authStatus = null;
   try {
-    authStatus = await modelRuntime.checkAuth(providerId);
-    if (authStatus?.authenticated) {
-      connected = true;
-      const available = await modelRuntime.getAvailable();
-      models = available
-        .filter(m => m.provider === providerId)
-        .map(m => ({ id: m.id, name: m.name || m.id, isDefault: false }));
+    if (providerId === 'custom') {
+      const auth = await modelRuntime.checkAuth('custom');
+      if (auth?.type) {
+        connected = true;
+        const available = await modelRuntime.getAvailable();
+        models = available.filter(m => m.provider === 'custom').map(m => ({ id: m.id, name: m.name || m.id, isDefault: false }));
+      }
+    } else {
+      authStatus = await modelRuntime.checkAuth(providerId);
+      if (authStatus?.type) {
+        connected = true;
+        const available = await modelRuntime.getAvailable();
+        models = available
+          .filter(m => m.provider === providerId)
+          .map(m => ({ id: m.id, name: m.name || m.id, isDefault: false }));
+      }
     }
   } catch {
     // auth check failed; surface as disconnected phase below
@@ -98,6 +118,31 @@ export async function getPiAgentStatus(refresh = false) {
   };
 }
 
+async function writeCustomProvider(baseUrl, modelId) {
+  const modelsPath = join(agentDir, 'models.json');
+  let config = {};
+  try { config = JSON.parse(await readFile(modelsPath, 'utf8')); }
+  catch { /* file doesn't exist yet */ }
+  if (!config.providers) config.providers = {};
+  config.providers.custom = {
+    baseUrl,
+    api: 'openai-completions',
+    models: [{ id: modelId, name: modelId }],
+  };
+  await writeFile(modelsPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  await reloadModelRuntime();
+}
+
+async function writeCustomApiKey(apiKey) {
+  const authPath = join(agentDir, 'auth.json');
+  let auth = {};
+  try { auth = JSON.parse(await readFile(authPath, 'utf8')); }
+  catch { /* file doesn't exist yet */ }
+  auth.custom = { type: 'api_key', key: apiKey };
+  await writeFile(authPath, JSON.stringify(auth, null, 2), { mode: 0o600 });
+  await reloadModelRuntime();
+}
+
 export async function configureProvider(value = {}) {
   if (activeRun) fail(409, '请等待当前操作完成。');
   const saved = await preferences();
@@ -109,7 +154,11 @@ export async function configureProvider(value = {}) {
   if (value.apiKey !== undefined) {
     if (typeof value.apiKey !== 'string' || value.apiKey.length > 10000) fail(400, 'API Key 格式不正确。');
     if (value.apiKey) {
-      await modelRuntime.setRuntimeApiKey(saved.provider, value.apiKey);
+      if (saved.provider === 'custom') {
+        await writeCustomApiKey(value.apiKey);
+      } else {
+        await modelRuntime.setRuntimeApiKey(saved.provider, value.apiKey);
+      }
     }
   }
   if (value.baseUrl !== undefined && typeof value.baseUrl === 'string') {
@@ -119,6 +168,9 @@ export async function configureProvider(value = {}) {
     if (typeof value.model !== 'string' || value.model.length > 200) fail(400, '模型名称不正确。');
     saved.model = value.model;
     savedModel = value.model;
+  }
+  if (saved.provider === 'custom' && saved.baseUrl && saved.model) {
+    await writeCustomProvider(saved.baseUrl, saved.model);
   }
   if (value.skillPaths !== undefined) {
     if (!value.skillPaths || typeof value.skillPaths !== 'object' || Array.isArray(value.skillPaths)) fail(400, 'Skill 路径设置不正确。');
@@ -139,7 +191,7 @@ export async function listModels(providerId) {
   if (!modelRuntime) throw new Error('ModelRuntime 尚未初始化。');
   try {
     const authStatus = await modelRuntime.checkAuth(providerId);
-    if (!authStatus?.authenticated) return [];
+    if (!authStatus?.type) return [];
     const available = await modelRuntime.getAvailable();
     return available
       .filter(m => m.provider === providerId)
@@ -169,6 +221,87 @@ export async function* runPiAgent(request, context) {
     const resultPath = resolve(context.outputsDir, resultName);
 
     const skill = context.skills.find(item => item.id === request.skillId);
+
+    if (request.scope === 'none') {
+      const teachingInstructions = await readFile(new URL('./prompts/course-tutor.md', import.meta.url), 'utf8');
+      const instructions = `${teachingInstructions}\n本轮为纯对话，不附加教材上下文。直接回答用户问题。`;
+      const userMessage = `${request.prompt}\n\n历史对话：${JSON.stringify(request.history)}`;
+
+      yield { type: 'progress', message: `已连接 ${status.name}，正在思考…` };
+
+      const piTools = createPiTools({
+        textbookPath: context.textbookPath,
+        textbookDir: context.textbookDir,
+        outputsDir: context.outputsDir,
+        courseDir: context.courseDir,
+      });
+
+      const model = getModel(status.config.provider, status.config.model) || (await modelRuntime.getAvailable()).find(m => m.provider === status.config.provider);
+      if (!model) fail(503, '没有找到可用的模型，请检查 API Key 配置。');
+
+      const loader = new DefaultResourceLoader({
+        cwd: context.courseDir,
+        agentDir: agentDir,
+        systemPromptOverride: () => instructions,
+      });
+      await loader.reload();
+
+      const { session } = await createAgentSession({
+        cwd: context.courseDir,
+        agentDir: agentDir,
+        model,
+        modelRuntime,
+        tools: ['read', 'bash', 'edit', 'write'],
+        customTools: piTools,
+        resourceLoader: loader,
+        sessionManager: SessionManager.inMemory(),
+        settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
+      });
+
+      if (context.signal) {
+        context.signal.addEventListener('abort', () => {
+          void session.abort().catch(() => {});
+          promptDone = true;
+          if (resolveEvent) { resolveEvent(); resolveEvent = null; }
+        });
+      }
+
+      const eventQueue = [];
+      let resolveEvent;
+      let promptDone = false;
+      let promptError = null;
+
+      const unsubscribe = session.subscribe((event) => {
+        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
+          eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
+        }
+        if (resolveEvent) { resolveEvent(); resolveEvent = null; }
+      });
+
+      const promptPromise = session.prompt(userMessage)
+        .catch(e => { promptError = e; })
+        .finally(() => { promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
+
+      while (!promptDone || eventQueue.length > 0) {
+        if (eventQueue.length === 0) {
+          await new Promise(resolve => { resolveEvent = resolve; });
+          continue;
+        }
+        const evt = eventQueue.shift();
+        if (evt) yield evt;
+      }
+
+      unsubscribe();
+
+      if (promptError) {
+        yield { type: 'error', message: promptError.message };
+        return;
+      }
+
+      yield { type: 'done' };
+      return;
+    }
+
     const slidesTask = request.skillId === 'slides' || request.artifact?.kind === 'slides';
     const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].some(kind =>
       request.skillId === kind || request.artifact?.kind === kind);

@@ -132,7 +132,7 @@ export default function CopilotPanel(props: Props) {
         </label>}
         <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<label className="scope-picker"><select aria-label="操作范围" disabled={busy} value={currentScope} onChange={event => setScope(event.target.value as Scope)}>
           <option value="page">当前页</option><option value="section">当前节</option><option value="chapter">当前章</option>
-          <option value="range">指定页码</option><option value="selection">选中文字</option><option value="book">整本教材</option>
+          <option value="range">指定页码</option><option value="selection">选中文字</option><option value="book">整本教材</option><option value="none">无范围</option>
         </select><ChevronDown size={12}/></label></div>
         {currentScope === 'range' && <fieldset className="page-range-picker" disabled={busy}>
           <legend>教材 PDF 页码</legend>
@@ -141,6 +141,7 @@ export default function CopilotPanel(props: Props) {
         </fieldset>}
         {currentScope === 'selection' && !selectedText && <div className="selection-help"><p>在教材上拖选文字即可引用。连续多页或扫描教材，请用“指定页码”。</p><button className="text-button" onClick={props.onShowTextbook}>去教材选文字</button><button className="text-button" onClick={()=>setScope('range')}>改用指定页码</button></div>}
         {currentScope === 'page' && <p className="scope-summary">本轮范围：PDF 第 {page} 页</p>}
+        {currentScope === 'none' && <p className="scope-summary">不附加教材上下文，直接对话。</p>}
         <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder={activeSkill === 'chat' ? '关于这本教材，你想了解什么？' : '补充你的要求…'} aria-label="向 Copilot 输入要求" rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
         <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{props.running ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={busy || !prompt.trim() || Boolean(scopeError)} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
       </div>

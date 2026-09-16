@@ -1,5 +1,5 @@
 export type SkillId = 'chat' | 'textbook-parse' | 'explain' | 'quiz' | 'mindmap' | 'knowledge-graph' | 'slides' | 'video';
-export type Scope = 'page' | 'section' | 'chapter' | 'selection' | 'range' | 'book';
+export type Scope = 'page' | 'section' | 'chapter' | 'selection' | 'range' | 'book' | 'none';
 export type KnowledgeGraphDetail = 'overview' | 'detailed';
 
 export interface KnowledgeGraphEvidence {
