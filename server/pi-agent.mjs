@@ -3,9 +3,7 @@ import { access, readFile, rm, mkdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { ModelRuntime, createAgentSession, SessionManager, DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
-import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { getModel } from '@earendil-works/pi-ai/compat';
 import { getStorageInfo, saveAgentSettings, resolveCourseFile, getCourseReferences } from './course-store.mjs';
 import { getLatexEnvironment } from './latex-environment.mjs';
@@ -20,7 +18,6 @@ export const skillsCatalog = [...tutoringSkills, ...structureSkills, ...material
 let modelRuntime = null;
 let agentDir = null;
 let activeRun = false;
-let lastError = '';
 let savedProvider = 'anthropic';
 let savedModel = '';
 
@@ -69,8 +66,8 @@ export async function getPiAgentStatus(refresh = false) {
         .filter(m => m.provider === providerId)
         .map(m => ({ id: m.id, name: m.name || m.id, isDefault: false }));
     }
-  } catch (error) {
-    lastError = error.message;
+  } catch {
+    // auth check failed; surface as disconnected phase below
   }
 
   const skills = await Promise.all(skillsCatalog.map(async skill => {
@@ -259,55 +256,51 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
       settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
     });
 
-    const abortController = context.signal ? new AbortController() : null;
+    // 事件队列：subscriber 推送事件，generator 消费并 yield，实现真正的流式输出
+    const eventQueue = [];
+    let resolveEvent = null;
+    let promptDone = false;
+    let promptError = null;
+
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
+        eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
+      } else if (event.type === 'tool_execution_start') {
+        eventQueue.push({ type: 'progress', message: `正在执行: ${event.toolName}` });
+      } else if (event.type === 'tool_execution_end') {
+        eventQueue.push({ type: 'progress', message: '工具执行完成' });
+      }
+      if (resolveEvent) { resolveEvent(); resolveEvent = null; }
+    });
+
     if (context.signal) {
       context.signal.addEventListener('abort', () => {
         void session.abort().catch(() => {});
+        promptDone = true;
+        if (resolveEvent) { resolveEvent(); resolveEvent = null; }
       });
     }
 
-    let agentDone = false;
-    let agentError = null;
+    // 并发启动 prompt；错误记录到 promptError，完成时唤醒 generator
+    const promptPromise = session.prompt(userMessage)
+      .catch(e => { promptError = e; })
+      .finally(() => { promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
 
-    const eventPromise = new Promise((resolve) => {
-      session.subscribe((event) => {
-        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
-          // pi text_delta 事件通过 yield 流式输出
-        }
-        if (event.type === 'agent_end') {
-          agentDone = true;
-          resolve();
-        }
-      });
-    });
-
-    // 启动 prompt
-    const promptPromise = session.prompt(userMessage);
-
-    // 流式输出 text_delta
-    const textDeltas = [];
-    const unsubscribe = session.subscribe((event) => {
-      if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
-        textDeltas.push(event.assistantMessageEvent.delta);
+    // 流式 yield：队列有事件就输出，否则等待唤醒；prompt 完成且队列清空后退出
+    while (!promptDone || eventQueue.length > 0) {
+      if (eventQueue.length === 0) {
+        await new Promise(r => { resolveEvent = r; });
+        continue;
       }
-    });
-
-    // 等待 agent 完成
-    try {
-      await promptPromise;
-    } catch (error) {
-      agentError = error;
+      const evt = eventQueue.shift();
+      if (evt) yield evt;
     }
+
     unsubscribe();
+    await promptPromise;
 
-    // 输出累积的文本
-    const fullText = textDeltas.join('');
-    if (fullText) {
-      yield { type: 'text', content: fullText };
-    }
-
-    if (agentError) {
-      yield { type: 'error', message: agentError.message };
+    if (promptError) {
+      yield { type: 'error', message: promptError.message };
       return;
     }
 
