@@ -4,7 +4,8 @@ import { realpath, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { extname, resolve, sep } from 'node:path';
 import { createApiMiddleware, disposeAgent } from './api.mjs';
-import { disposeReferenceExtractions } from './course-store.mjs';
+import { initModelRuntime } from './agent.mjs';
+import { getStorageInfo, disposeReferenceExtractions } from './course-store.mjs';
 
 const distPath = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const api = createApiMiddleware();
@@ -92,10 +93,18 @@ if (process.send) {
   process.on('message', message => { if (message?.type === 'shutdown') shutdown(); });
   process.once('disconnect', shutdown);
 }
-server.listen(port, host, () => {
-  const actualPort = server.address().port;
-  console.log(`课程工作台：http://${host}:${actualPort}`);
-  process.send?.({ type: 'ready', port: actualPort });
+async function boot() {
+  const { directory } = await getStorageInfo();
+  await initModelRuntime(directory);
+  server.listen(port, host, () => {
+    const actualPort = server.address().port;
+    console.log(`课程工作台：http://${host}:${actualPort}`);
+    process.send?.({ type: 'ready', port: actualPort });
+  });
+}
+void boot().catch(error => {
+  console.error(`启动失败：${error.message}`);
+  process.exitCode = 1;
 });
 server.on('error', (error) => {
   console.error(`启动失败：${error.message}`);
