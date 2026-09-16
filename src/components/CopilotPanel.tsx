@@ -30,7 +30,8 @@ export default function CopilotPanel(props: Props) {
   const { book, page, chapter, selectedText, contextArtifact, skills, messages, busy } = props;
   const [activeSkill, setActiveSkill] = useState<SkillId>('chat');
   const [prompt, setPrompt] = useState('');
-  const [scope, setScope] = useState<Scope>('page');
+  const [scope, setScope] = useState<Scope>('none');
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [rangeStart, setRangeStart] = useState(String(page));
   const [rangeEnd, setRangeEnd] = useState(String(page));
   const [templateId, setTemplateId] = useState('');
@@ -50,10 +51,10 @@ export default function CopilotPanel(props: Props) {
 
   useEffect(() => {
     if (!props.referenceQuestionId) return;
-    setActiveSkill('chat'); setScope('page'); setToolsOpen(false); input.current?.focus();
+    setActiveSkill('chat'); setScope('none'); setToolsOpen(false); input.current?.focus();
   }, [props.referenceQuestionId]);
 
-  useEffect(() => { if (selectedText) setScope('selection'); else setScope(current => current === 'selection' ? 'page' : current); }, [selectedText]);
+  useEffect(() => { if (selectedText) setScope('selection'); else setScope(current => current === 'selection' ? 'none' : current); }, [selectedText]);
   useEffect(() => {
     const container = conversation.current;
     if (container?.clientHeight) container.scrollTo({ top: messages.length ? container.scrollHeight : 0, behavior: 'instant' });
@@ -70,7 +71,7 @@ export default function CopilotPanel(props: Props) {
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => { setPrompt(''); setScope('page'); setRangeStart(String(page)); setRangeEnd(String(page)); setActiveSkill('chat'); setTemplateId(''); setKnowledgeGraphDetail('overview'); setToolsOpen(true); }, [book.id]);
+  useEffect(() => { setPrompt(''); setScope('none'); setRangeStart(String(page)); setRangeEnd(String(page)); setActiveSkill('chat'); setTemplateId(''); setKnowledgeGraphDetail('overview'); setToolsOpen(true); }, [book.id]);
 
   function submit() {
     if (!prompt.trim() || busy || scopeError) return;
@@ -129,7 +130,7 @@ export default function CopilotPanel(props: Props) {
           </select>
           {templateId && <small>{selectedInfo?.templates?.find(template => template.id === templateId)?.description}</small>}
         </label>}
-        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<div className="scope-tags">{([['page','当前页'],['section','当前节'],['chapter','当前章'],['range','指定页码'],['selection','选中文字'],['book','整本教材'],['none','无范围']] as const).map(([value,label]) => <button key={value} className={`scope-tag ${currentScope===value?'active':''}`} disabled={busy} onClick={()=>setScope(value)}>{label}</button>)}</div></div>
+        <div className="composer-options"><span className="active-skill"><Sparkles size={12}/>{activeTitle}</span>{activeSkill === 'knowledge-graph' && <label className="scope-picker knowledge-detail-picker" title="概览突出核心关系；详细展开范围内的概念与关系，并记录覆盖情况。"><select aria-label="知识图谱详细程度" value={knowledgeGraphDetail} onChange={event => setKnowledgeGraphDetail(event.target.value as KnowledgeGraphDetail)}><option value="overview">概览</option><option value="detailed">详细</option></select><ChevronDown size={12}/></label>}<div className="scope-tags">{(() => { const allScopes=[['page','当前页'],['section','当前节'],['chapter','当前章'],['range','指定页码'],['selection','选中文字'],['book','整本教材'],['none','无范围']] as const; const currentLabel=allScopes.find(([v])=>v===currentScope)?.[1]||'无范围'; return <div className="scope-dropdown"><button className="scope-tag active" disabled={busy} onClick={()=>setScopeOpen(!scopeOpen)}>{currentLabel}<ChevronDown size={12} className={scopeOpen?'rotated':''}/></button>{scopeOpen && <div className="scope-menu">{allScopes.map(([value,label]) => <button key={value} className={`scope-tag ${currentScope===value?'active':''}`} disabled={busy} onClick={()=>{setScope(value);setScopeOpen(false);}}>{label}</button>)}</div>}</div>; })()}</div></div>
         {currentScope === 'range' && <fieldset className="page-range-picker" disabled={busy}>
           <legend>教材 PDF 页码</legend>
           <div><label>起始页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="起始页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeStart} onChange={event=>setRangeStart(event.target.value)}/></label><span>—</span><label>结束页<input type="number" inputMode="numeric" min="1" max={book.totalPages} step="1" aria-label="结束页" aria-invalid={Boolean(rangeError)} aria-describedby="page-range-note" value={rangeEnd} onChange={event=>setRangeEnd(event.target.value)}/></label></div>
@@ -137,7 +138,6 @@ export default function CopilotPanel(props: Props) {
         </fieldset>}
         {currentScope === 'selection' && !selectedText && <div className="selection-help"><p>在教材上拖选文字即可引用。连续多页或扫描教材，请用“指定页码”。</p><button className="text-button" onClick={props.onShowTextbook}>去教材选文字</button><button className="text-button" onClick={()=>setScope('range')}>改用指定页码</button></div>}
         {currentScope === 'page' && <p className="scope-summary">本轮范围：PDF 第 {page} 页</p>}
-        {currentScope === 'none' && <p className="scope-summary">不附加教材上下文，直接对话。</p>}
         <textarea ref={input} value={prompt} onChange={event => setPrompt(event.target.value)} placeholder={activeSkill === 'chat' ? '关于这本教材，你想了解什么？' : '补充你的要求…'} aria-label="向 Copilot 输入要求" rows={3} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } }}/>
         <div className="composer-bottom"><span><CornerDownLeft size={12}/> 发送 <i>·</i> Shift + Enter 换行</span>{props.running ? <button className="send-button" onClick={props.onStop} aria-label="停止任务"><Square size={15} fill="currentColor"/></button> : <button className="send-button" onClick={submit} disabled={busy || !prompt.trim() || Boolean(scopeError)} aria-label="发送要求" title={selectedInfo?.available ? '发送要求' : '此功能尚待接入'}><ArrowUp size={19}/></button>}</div>
       </div>
