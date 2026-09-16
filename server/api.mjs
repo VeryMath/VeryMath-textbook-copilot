@@ -3,7 +3,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { extname, resolve, sep } from 'node:path';
-import { codingAgent, getAgentStatus, getSkillAvailability, connectAgent, disconnectAgent, configureAgent, startAgentLogin, cancelAgentLogin } from './agent.mjs';
+import { codingAgent, getAgentStatus, getSkillAvailability, configureAgent, listModels } from './agent.mjs';
 export { disposeAgent } from './agent.mjs';
 import { handleCourseApi } from './course-api.mjs';
 import { createGeneratedArtifactSaver, getCoursePaths, outputUrl } from './course-store.mjs';
@@ -205,18 +205,15 @@ async function handleApi(req, res, next) {
     if (req.method !== 'GET') throw new HttpError(405, '此地址仅支持 GET。');
     return sendJson(res, 200, await getAgentStatus(true));
   }
-  const agentActions = {
-    '/api/agent/connect': ['POST', connectAgent],
-    '/api/agent/disconnect': ['POST', disconnectAgent],
-    '/api/agent/config': ['PATCH', configureAgent],
-    '/api/agent/login': ['POST', startAgentLogin],
-    '/api/agent/login/cancel': ['POST', cancelAgentLogin],
-  };
-  if (agentActions[pathname]) {
-    const [method, action] = agentActions[pathname];
-    if (req.method !== method) throw new HttpError(405, `此地址仅支持 ${method}。`);
+  if (pathname === '/api/agent/configure') {
+    if (req.method !== 'POST') throw new HttpError(405, '此地址仅支持 POST。');
     if (!req.headers['content-type']?.includes('application/json')) throw new HttpError(415, '请以 JSON 格式发送请求。');
-    return sendJson(res, 200, await action(await readBody(req)));
+    return sendJson(res, 200, await configureAgent(await readBody(req)));
+  }
+  if (pathname === '/api/agent/models') {
+    if (req.method !== 'GET') throw new HttpError(405, '此地址仅支持 GET。');
+    const providerId = new URL(req.url || '/', 'http://localhost').searchParams.get('provider') || '';
+    return sendJson(res, 200, await listModels(providerId));
   }
   const assetMatch = /^\/api\/pdf-assets\/(cmaps|standard_fonts|wasm)\/([^/]+)$/.exec(pathname);
   if (assetMatch) return servePdfAsset(req, res, assetMatch[1], assetMatch[2]);
