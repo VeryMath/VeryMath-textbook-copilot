@@ -1,7 +1,14 @@
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
-import { readCommand } from './agent-process.mjs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execute = promisify(execFile);
+
+async function readCommand(executable, args, cwd) {
+  return execute(executable, args, { cwd, timeout: 20000, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' });
+}
 
 let cached;
 let checkedAt = 0;
