@@ -47,9 +47,12 @@ function protectContents(contents) {
 }
 
 async function startService() {
+  const isWin = process.platform === 'win32';
+  const sep = isWin ? ';' : ':';
+  const extraPaths = isWin ? [] : ['/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
   const environment = { ...process.env,
     ELECTRON_RUN_AS_NODE: '1', COURSE_COPILOT_HOME: dataDirectory, HOST: '127.0.0.1', PORT: '0',
-    PATH: [...new Set([process.env.PATH, join(homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/Library/TeX/texbin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].filter(Boolean))].join(':'),
+    PATH: [...new Set([process.env.PATH, ...extraPaths, join(homedir(), '.local/bin')].filter(Boolean))].join(sep),
   };
   service = spawn(process.execPath, [join(app.getAppPath(), 'server/index.mjs')], {
     cwd: app.getAppPath(), env: environment, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -145,14 +148,23 @@ if (!app.requestSingleInstanceLock()) {
     serviceUrl = await startService();
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'VeryMath', submenu: [{ role: 'about', label: '关于 VeryMath' }, { type: 'separator' }, { role: 'services', label: '服务' }, { type: 'separator' }, { role: 'hide', label: '隐藏 VeryMath' }, { role: 'hideOthers', label: '隐藏其他' }, { role: 'unhide', label: '显示全部' }, { type: 'separator' }, { role: 'quit', label: '退出 VeryMath' }] },
-      { label: '文件', submenu: [{ label: '打开课程数据目录', click: () => void shell.openPath(dataDirectory) }, { label: '选择课程数据目录…', click: () => void chooseDirectory().catch(error => dialog.showErrorBox('切换目录失败', error.message)) }, { type: 'separator' }, { role: 'close', label: '关闭窗口' }] },
-      { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' }, { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] },
-      { label: '视图', submenu: [{ role: 'reload', label: '重新载入' }, { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }, { role: 'togglefullscreen', label: '全屏' }] },
-      { label: '窗口', submenu: [{ role: 'minimize', label: '最小化' }, { role: 'zoom', label: '缩放' }, { label: '显示教材窗口', click: showWindow }, { role: 'front', label: '全部置于顶层' }] },
-      { label: '帮助', submenu: [{ label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) }, { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') }] },
-    ]));
+    const isMac = process.platform === 'darwin';
+    const template = [];
+    if (isMac) {
+      template.push({ label: 'VeryMath', submenu: [{ role: 'about', label: '关于 VeryMath' }, { type: 'separator' }, { role: 'services', label: '服务' }, { type: 'separator' }, { role: 'hide', label: '隐藏 VeryMath' }, { role: 'hideOthers', label: '隐藏其他' }, { role: 'unhide', label: '显示全部' }, { type: 'separator' }, { role: 'quit', label: '退出 VeryMath' }] });
+    }
+    template.push({ label: '文件', submenu: [
+      { label: '打开课程数据目录', click: () => void shell.openPath(dataDirectory) },
+      { label: '选择课程数据目录…', click: () => void chooseDirectory().catch(error => dialog.showErrorBox('切换目录失败', error.message)) },
+      { type: 'separator' },
+      isMac ? { role: 'close', label: '关闭窗口' } : { role: 'quit', label: '退出' },
+    ] });
+    template.push({ label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' }, { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] });
+    template.push({ label: '视图', submenu: [{ role: 'reload', label: '重新载入' }, { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }, { role: 'togglefullscreen', label: '全屏' }] });
+    template.push({ label: '窗口', submenu: [{ role: 'minimize', label: '最小化' }, ...(isMac ? [{ role: 'zoom', label: '缩放' }] : []), { label: '显示教材窗口', click: showWindow }, ...(isMac ? [{ role: 'front', label: '全部置于顶层' }] : [])] });
+    if (!isMac) template.push({ label: '帮助', submenu: [{ label: '关于 VeryMath', click: () => app.showAboutPanel() }, { type: 'separator' }, { label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) }, { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') }] });
+    if (isMac) template.push({ label: '帮助', submenu: [{ label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) }, { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') }] });
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     await createWindow();
   }).catch(async error => {
     dialog.showErrorBox('VeryMath 启动失败', error.message);

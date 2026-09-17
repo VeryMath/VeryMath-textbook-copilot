@@ -13,7 +13,9 @@
     "migrate": "node server/migrate-layout.mjs",
     "desktop": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --mac --arm64 --dir --publish never",
-    "desktop:dist": "npm run build && electron-builder --mac --arm64 --publish never"
+    "desktop:dist": "npm run build && electron-builder --mac --arm64 --publish never",
+    "desktop:pack:win": "npm run build && electron-builder --win --x64 --dir --publish never",
+    "desktop:dist:win": "npm run build && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.5",
@@ -60,6 +62,7 @@
       "src/data/**/*",
       "desktop/main.cjs",
       "desktop/icon.icns",
+      "desktop/icon.ico",
       "desktop/icon.svg",
       "package.json",
       "LICENSE"
@@ -96,6 +99,24 @@
           "path": "/Applications"
         }
       ]
+    },
+    "win": {
+      "icon": "desktop/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "VeryMath-${version}-${arch}-setup.${ext}",
+      "shortcutName": "VeryMath"
     }
   }
 }
