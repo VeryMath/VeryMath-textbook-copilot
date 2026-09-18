@@ -63,6 +63,7 @@
       "desktop/main.cjs",
       "desktop/icon.icns",
       "desktop/icon.ico",
+      "desktop/icon.png",
       "desktop/icon.svg",
       "package.json",
       "LICENSE"
@@ -101,7 +102,7 @@
       ]
     },
     "win": {
-      "icon": "desktop/icon.ico",
+      "icon": "desktop/icon.png",
       "target": [
         {
           "target": "nsis",
@@ -109,13 +110,17 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "artifactName": "VeryMath-${version}-windows-${arch}-setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "VeryMath-${version}-${arch}-setup.${ext}",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": false,
       "shortcutName": "VeryMath"
     }
   }
