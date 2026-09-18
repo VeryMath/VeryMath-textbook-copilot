@@ -283,7 +283,7 @@ export default function App() {
 
   const updateAgentStatus = useCallback((status: AgentStatus) => { setAgentStatus(status); setSkills(skillsFromStatus(status)); }, []);
 
-  return <div className="app-shell">
+  return <div className={`app-shell ${outlineOpen?'':'outline-closed'}`}>
     <header className="app-header">
       <button className="brand" onClick={()=>setShowBooks(true)} aria-label="打开课程书架"><span className="brand-mark"><img src="/brand-icon.png" alt="VeryMath"/></span></button>
       <div className="header-divider"/>
