@@ -258,6 +258,28 @@ export async function* runPiAgent(request, context) {
         settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
       });
 
+      const eventQueue = [];
+      let resolveEvent = null;
+      let promptDone = false;
+      let promptError = null;
+      let hasText = false;
+
+      const unsubscribe = session.subscribe((event) => {
+        console.error(`[pi-agent] event: ${event.type}` + (event.assistantMessageEvent ? `.${event.assistantMessageEvent.type}` : ''));
+        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
+          hasText = true;
+          eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
+        } else if (event.type === 'message_end' && !hasText && event.message?.role === 'assistant') {
+          const text = event.message.content?.filter(c => c.type === 'text').map(c => c.text).join('') || '';
+          if (text) { hasText = true; eventQueue.push({ type: 'text', content: text }); }
+        } else if (event.type === 'tool_execution_start') {
+          eventQueue.push({ type: 'progress', message: `正在执行: ${event.toolName}` });
+        } else if (event.type === 'tool_execution_end') {
+          eventQueue.push({ type: 'progress', message: '工具执行完成' });
+        }
+        if (resolveEvent) { resolveEvent(); resolveEvent = null; }
+      });
+
       if (context.signal) {
         context.signal.addEventListener('abort', () => {
           void session.abort().catch(() => {});
@@ -266,21 +288,9 @@ export async function* runPiAgent(request, context) {
         });
       }
 
-      const eventQueue = [];
-      let resolveEvent;
-      let promptDone = false;
-      let promptError = null;
-
-      const unsubscribe = session.subscribe((event) => {
-        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
-          eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
-        }
-        if (resolveEvent) { resolveEvent(); resolveEvent = null; }
-      });
-
       const promptPromise = session.prompt(userMessage)
-        .catch(e => { promptError = e; })
-        .finally(() => { promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
+        .catch(e => { console.error(`[pi-agent] prompt error: ${e.message}`); promptError = e; })
+        .finally(() => { console.error(`[pi-agent] prompt done, hasText=${hasText}`); promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
 
       while (!promptDone || eventQueue.length > 0) {
         if (eventQueue.length === 0) {
@@ -394,10 +404,16 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
     let resolveEvent = null;
     let promptDone = false;
     let promptError = null;
+    let hasText = false;
 
     const unsubscribe = session.subscribe((event) => {
+      console.error(`[pi-agent] event: ${event.type}` + (event.assistantMessageEvent ? `.${event.assistantMessageEvent.type}` : ''));
       if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
+        hasText = true;
         eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
+      } else if (event.type === 'message_end' && !hasText && event.message?.role === 'assistant') {
+        const text = event.message.content?.filter(c => c.type === 'text').map(c => c.text).join('') || '';
+        if (text) { hasText = true; eventQueue.push({ type: 'text', content: text }); }
       } else if (event.type === 'tool_execution_start') {
         eventQueue.push({ type: 'progress', message: `正在执行: ${event.toolName}` });
       } else if (event.type === 'tool_execution_end') {
@@ -414,10 +430,9 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
       });
     }
 
-    // 并发启动 prompt；错误记录到 promptError，完成时唤醒 generator
     const promptPromise = session.prompt(userMessage)
-      .catch(e => { promptError = e; })
-      .finally(() => { promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
+      .catch(e => { console.error(`[pi-agent] prompt error: ${e.message}`); promptError = e; })
+      .finally(() => { console.error(`[pi-agent] prompt done, hasText=${hasText}`); promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
 
     // 流式 yield：队列有事件就输出，否则等待唤醒；prompt 完成且队列清空后退出
     while (!promptDone || eventQueue.length > 0) {
