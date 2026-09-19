@@ -1,5 +1,7 @@
 # Pi Agent 集成实现计划
 
+> **状态**：已实现（提交 0c7af88…2814424 落地）。本文件保留为当时的实施计划与勾选清单，其中未勾选的步骤对应已完成的提交。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 ACP 外接 coding agent 改为内置 pi agent runtime，前端填 API Key + Base URL 直连 LLM provider。
