@@ -1,6 +1,6 @@
 # VeryMath 智慧教材 · 用户手册
 
-本手册面向首次使用的人，重点是安装与启动。装好并连上 Agent 后，教材解析、讲解、出题、思维导图、知识图谱和课件生成都由所选 Coding Agent 按各 Skill 自主完成，你只需在界面上选择功能、提出要求和查看结果。
+本手册面向首次使用的人，重点是安装与启动。配置好模型服务后，教材解析、讲解、出题、思维导图、知识图谱和课件生成都由内置课程 Agent 按各 Skill 自主完成，你只需在界面上选择功能、提出要求和查看结果。
 
 ## 这是什么
 
@@ -9,25 +9,19 @@
 ```text
 前端 UI：教材、目录、选中文字、对话、图谱、课件、视频
                     ↕ 请求、进度、回答、结果
-Coding Agent：理解要求 → 读取教材 → 调用一个或多个 Skill
+课程 Agent：理解要求 → 读取教材 → 调用一个或多个 Skill
                     ↕ 读取与保存文件
 个人课程目录：原始教材、解析内容、阅读记录、对话、生成资料
 ```
 
-教学任务统一交给 Coding Agent，它调用项目内置的 Skill（讲解、出题、导图、图谱、课件）完成具体工作。每个人使用自己的 Agent 账号，教材和课程记录保存在部署者自己的电脑上。
+教学任务统一交给内置的课程 Agent（pi agent runtime），它调用项目内置的 Skill（讲解、出题、导图、图谱、课件）完成具体工作。每个人使用自己的 LLM API Key，教材和课程记录保存在部署者自己的电脑上。
 
 ## 准备工作
 
 在要部署的电脑上准备两样东西：
 
 - **Node.js 22.13 或更新版本**，用 `node --version` 检查。
-- **至少一个 Coding Agent**，安装并登录其一即可，无需全部安装：
-
-| Agent | 安装说明 |
-| --- | --- |
-| Codex | [安装 Codex CLI](https://developers.openai.com/codex/cli/) |
-| Claude Code | [安装 Claude Code](https://code.claude.com/docs/en/setup) |
-| OpenCode | [安装 OpenCode](https://opencode.ai/docs/) |
+- **一个 LLM API Key**：Anthropic、OpenAI、Google、DeepSeek、OpenRouter 等服务商任选其一，也可以使用任意 OpenAI 兼容端点。工作台内嵌 Agent，不需要安装 Codex、Claude Code 等命令行程序。
 
 教材 PDF 可以现在就准备好，也可以装完再导入。
 
@@ -35,27 +29,27 @@ Coding Agent：理解要求 → 读取教材 → 调用一个或多个 Skill
 
 ### 方式一：让 Coding Agent 安装（推荐）
 
-把下面这段发给你使用的 Coding Agent。它会拉取仓库，读取并执行仓库内的 [verymath-install 部署说明](../skills/verymath-install/SKILL.md)，自动完成依赖安装、内置课程 Skill 配置、Agent 连接和服务启动，最后给你访问地址：
+把下面这段发给你使用的 Coding Agent。它会拉取仓库，读取并执行仓库内的 [verymath-install 部署说明](../skills/verymath-install/SKILL.md)，自动完成依赖安装、内置课程 Skill 配置和服务启动，最后给你访问地址：
 
 ```text
-拉取 https://github.com/ConanXu-math/course-copilot，
+拉取 https://github.com/VeryMath/VeryMath-textbook-copilot，
 按仓库里的 skills/verymath-install/SKILL.md 完成 VeryMath 智慧教材的本机部署：
-检查并安装必要依赖，配置内置课程 Skill，连接我现有的 Agent，启动工作台并给我访问地址。
+检查并安装必要依赖，配置内置课程 Skill，启动工作台并给我访问地址。
 ```
 
-需要账号登录时由你本人完成。安装完成后，Agent 会返回可点击的访问地址、安装与数据目录、Agent 状态和停止/再次启动命令。
+API Key 由你本人在「工作区设置」中填写，安装过程不会索取。安装完成后，Agent 会返回可点击的访问地址、安装与数据目录、模型服务状态和停止/再次启动命令。
 
 ### 方式二：手动安装
 
-私有仓库需要先获得访问权限。在项目目录依次运行：
+在项目目录依次运行：
 
 ```bash
-git clone https://github.com/ConanXu-math/course-copilot.git
-cd course-copilot
-npm install --package-lock=false
+git clone https://github.com/VeryMath/VeryMath-textbook-copilot.git
+cd VeryMath-textbook-copilot
+npm ci
 ```
 
-开发模式（地址以终端输出为准，通常为 `http://127.0.0.1:5173`）：
+开发模式（地址以终端输出为准，通常为 `http://127.0.0.1:5173`；该模式只提供前端页面与课程文件接口）：
 
 ```bash
 npm run dev
@@ -75,13 +69,13 @@ npm start
 ### 首次使用
 
 1. 打开页面，点击「导入教材」选择你的 PDF。
-2. 点击右上角「工作区设置」，在 Coding Agent 列表中选择程序，点「连接本机…」。
-3. 复用已有登录或按 Agent 的认证方式完成登录；在「使用模型」选择模型或保留默认。
+2. 点击右上角「工作区设置」，在「模型服务 Provider」中选择服务商；自建端点选「自定义 API（OpenAI 兼容）」并填写 Base URL。
+3. 填写 API Key，点「保存并连接」；在「使用模型」中选择模型，自定义 API 直接填写模型名称。
 4. 关闭设置页即可开始提问。
 
 ## 其余功能
 
-连接 Agent 后，界面提供教材解析、讲解内容、知识点出题、思维导图、知识图谱、生成课件等按钮，并可与 Copilot 自由问答。各功能选择范围（当前页、选中内容、当前章节或整本教材）并发送要求后，由所选 Agent 读取教材和对应 Skill 自主执行，结果保存到当前课程的 `outputs` 目录，并在界面左侧打开。
+配置好模型服务后，界面提供教材解析、讲解内容、知识点出题、思维导图、知识图谱、生成课件等按钮，并可与 Copilot 自由问答。各功能选择范围（当前页、选中内容、当前章节或整本教材）并发送要求后，由课程 Agent 读取教材和对应 Skill 自主执行，结果保存到当前课程的 `outputs` 目录，并在界面左侧打开。
 
 生成课件需要部署电脑有可用的 XeLaTeX 及 Beamer、ctex、数学宏包和中文字体。「工作区设置 → 课件编译环境」可查看缺失项并重新检查；具体补齐由 Agent 按检查列表执行。
 
@@ -89,17 +83,17 @@ npm start
 
 默认保存在 `~/.course-copilot/`，设置页显示实际路径。每门课一个文件夹（以书名命名），里面是教材原件、阅读记录、对话和生成资料。你保存下来的成品都集中在这门课的 `outputs/` 下，按类型分文件夹——`notes/` 是讲解和笔记、`slides/` 是课件 PDF，点开只看到文档，编译文件和内部 JSON 都藏在 `.build/` 里不碍眼。
 
-同一本教材再次上传时会自动归到已有那门课，不会新建一份。备份时复制整个 `~/.course-copilot/` 目录即可；换电脑后在新电脑上安装并登录所选 Agent，手动填过的程序或 Skill 路径变了在设置页更新。
+同一本教材再次上传时会自动归到已有那门课，不会新建一份。备份时复制整个 `~/.course-copilot/` 目录即可（「自定义 API」的 Key 存在 `agent/auth.json`，请勿分享）；换电脑后在新电脑上安装，内置服务商的 API Key 需要重新填写，手动填过的 Skill 路径变了在设置页更新。
 
 ## 常见问题
 
 - **页面打不开 / 端口被占**：确认服务在运行，地址以终端输出为准；端口被其他程序占用时换端口启动。
-- **Agent 连不上 / 要登录**：在「工作区设置」点「刷新状态」，按 Agent 提供的认证方式登录，或先在本机终端登录再重新连接。
+- **提示未配置 / 模型不可用**：在「工作区设置」确认服务商与 API Key 已保存，并点「刷新状态」；模型列表为空时检查 Key、余额与所选模型是否对该账号开放。
 - **课件说缺 TeX 或中文字体**：查看「课件编译环境」列出的缺失项，由 Agent 补齐后重新检查；中文字体（如 Fandol）缺失时尤其确认在补装清单内。
 - **换浏览器数据还在吗**：在。教材、阅读位置、书签、对话和结果由本机服务保存在个人目录，换浏览器或清除缓存后重新读取即可。
 
 ## 进一步
 
-- [Agent 接入说明](agent-integration.md)：各 Agent 的连接方式、模型与兼容选项。
+- [模型服务接入说明](agent-integration.md)：服务商、API Key、自定义端点与模型能力声明。
 - [Skill 模块开发与接入](skill-development.md)：如何新增或修改课程 Skill。
 - [README](../README.md)：架构、接口字段与开发参考。
