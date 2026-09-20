@@ -3,6 +3,7 @@ import { access, readFile, rm, mkdir, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
+import JSON5 from 'json5';
 import { ModelRuntime, createAgentSession, SessionManager, DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { getStorageInfo, saveAgentSettings, resolveCourseFile, getCourseReferences } from './course-store.mjs';
 import { getLatexEnvironment } from './latex-environment.mjs';
@@ -36,7 +37,7 @@ async function preferences() {
 }
 
 async function readModelConfig() {
-  try { return JSON.parse(await readFile(join(agentDir, 'models.json'), 'utf8')); }
+  try { return JSON5.parse(await readFile(join(agentDir, 'models.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; return {}; }
 }
 
