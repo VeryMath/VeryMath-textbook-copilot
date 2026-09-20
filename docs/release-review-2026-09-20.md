@@ -1,6 +1,6 @@
 # 2026-09-20 源码与安装包检查
 
-检查对象是 VeryMath/VeryMath-textbook-copilot 的主分支 `a55fd77` 和 [v0.2.1 发布页](https://github.com/VeryMath/VeryMath-textbook-copilot/releases/tag/v0.2.1)上的两个安装包。本地已从原来的 `637f248` 更新到该主分支，修复位于 `codex/review-release-bugs`。没有推送或替换 GitHub 安装包。
+检查对象是 VeryMath/VeryMath-textbook-copilot 的主分支 `a55fd77` 和 [v0.2.1 发布页](https://github.com/VeryMath/VeryMath-textbook-copilot/releases/tag/v0.2.1)上的两个安装包。本地已从原来的 `637f248` 更新到该主分支，修复位于 `codex/review-release-bugs`。源码推送与安装包发布分别处理，GitHub 上原有安装包没有替换。
 
 ## 结论
 
@@ -17,7 +17,7 @@
 | Windows 用户 | 在未安装 Bash 的电脑上执行课件编译等命令任务 | 高：原包只启用 Bash，调用命令时可能报 No bash shell found | Windows EXE 解包与依赖源码确认；没有 Windows 实机执行 | 已改为 Windows 使用 SDK 内置 PowerShell，并修正包内 Node 的调用提示；SDK 工具启用检查通过，实机执行待验 |
 | 手工配置模型的用户 | 保存连接设置或 Skill 时已有模型配置被重写 | 中：自定义模型列表、API 协议或逐模型地址可能被改掉 | 临时目录与真实 SDK 验证了多模型、独立地址、注释、headers 和重启 | 保留现有配置，仅在地址变化或新增模型时写入；修复过程中补充了这些兼容检查 |
 | Windows 用户 | PATH 中没有 unzip 时上传 DOCX/PPTX | 中：正文提取和全文搜索失败 | 原安装包不含 unzip.exe；已在无外部命令的环境复现缺少 unzip 错误 | 已改用随应用打包的 ZIP 读取库；真实 DOCX 和 PPTX 均在空 PATH 下成功提取，Windows 实机界面仍待验证 |
-| 安装与维护人员 | 按发布标签辨认安装版本 | 低：发布标签是 v0.2.1，但两个资产和应用内部版本都是 0.1.0 | 发布信息及 DMG 内 Info.plist 实际读取 | 未自行更改发布版本；正式发版前需统一版本号 |
+| 安装与维护人员 | 按发布标签辨认安装版本 | 低：发布标签是 v0.2.1，但两个资产和应用内部版本都是 0.1.0 | 发布信息及 DMG 内 Info.plist 实际读取 | 修复版源码、锁文件与桌面应用内部版本已统一为 0.2.2，并实际核对构建产物；不改写历史发布 |
 
 ## 实际做过的验证
 
@@ -30,10 +30,10 @@
 - TypeScript 检查、生产构建、后端语法检查和 Git 差异检查通过。macOS arm64 DMG 可重新构建；安装包没有上传。
 - 最终重新打包后的课程服务返回 200，真实教材导入返回 201；不可达模型地址的请求最终返回 error，不再返回 done。本地安装包位于 `release/VeryMath-local-review-arm64.dmg`（约 276 MiB），内部版本沿用 0.1.0，不是新的 GitHub 发布。
 - 下载并解包 Windows EXE，确认 Windows x64 Canvas 原生模块存在。现有 Windows 工作流只执行内嵌 Node 的版本命令，没有安装向导、模型问答或课件生成的完整验证。
-- 补齐 Office 文件导入修复后，在空 PATH 下实际提取 DOCX 的 8 段正文与 PPTX 的 4 页正文，不再调用系统 unzip。
+- 补齐 Office 文件导入修复后，在空 PATH 下实际提取 DOCX 的 8 段正文与 PPTX 的 4 页正文，不再调用系统 unzip。重新构建的 0.2.2 桌面应用自带运行环境也通过了相同文件提取；包内包含生产依赖 yauzl 3.4.0。
 
 ## 验证范围的限制
 
 本次没有 Windows 真机或虚拟机，没有执行使用有效模型账号的完整问答、课件生成、OCR 和视频任务。因此，范围与资料处理修复经过代码核对和页面检查，不能据此声称模型已经成功生成全部类型的学习资料。外部 XeLaTeX 和 OCR 的安装仍按现有依赖要求处理；DOCX/PPTX 不再需要系统 unzip。
 
-建议先使用本地修复版复核核心流程，再统一版本号并发布。GitHub 上原 v0.2.1 安装包仍包含本报告所列的原有问题。
+建议先使用本地修复版复核核心流程，再发布 0.2.2。GitHub 上原 v0.2.1 安装包仍包含本报告所列的原有问题。

@@ -45,9 +45,9 @@
 
 提供 macOS 和 Windows 安装包，自带运行环境，无需安装 Node.js 或命令行工具。
 
-**macOS（Apple Silicon）**：打开 `VeryMath-0.1.0-arm64.dmg`，将 VeryMath 拖入 Applications，然后从应用程序中打开。要求 macOS 12 或更新版本。
+**macOS（Apple Silicon）**：打开下载的 `VeryMath-<版本>-arm64.dmg`，将 VeryMath 拖入 Applications，然后从应用程序中打开。要求 macOS 12 或更新版本。
 
-**Windows**：运行 `VeryMath-0.1.0-windows-x64-setup.exe`，按安装向导选择目录后启动。适用于 64 位 Windows 10 或更新版本。安装包未签名，首次运行时 Windows 可能显示 SmartScreen 提示，点击「仍要运行」即可。
+**Windows**：运行下载的 `VeryMath-<版本>-windows-x64-setup.exe`，按安装向导选择目录后启动。适用于 64 位 Windows 10 或更新版本。安装包未签名，首次运行时 Windows 可能显示 SmartScreen 提示，点击「仍要运行」即可。
 
 下载地址见 [Releases](https://github.com/VeryMath/VeryMath-textbook-copilot/releases)。
 
@@ -64,8 +64,8 @@
 
 | 平台 | 命令 | 产物 |
 | --- | --- | --- |
-| macOS | `npm run desktop:dist` | `release/VeryMath-0.1.0-arm64.dmg` |
-| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.1.0-windows-x64-setup.exe` |
+| macOS | `npm run desktop:dist` | `release/VeryMath-0.2.2-arm64.dmg` |
+| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.2.2-windows-x64-setup.exe` |
 
 Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模块正确安装。详见 [桌面版文档](docs/desktop.md)。
 
