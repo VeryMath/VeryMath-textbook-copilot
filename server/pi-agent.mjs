@@ -4,7 +4,6 @@ import { constants } from 'node:fs';
 import { resolve, join, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { ModelRuntime, createAgentSession, SessionManager, DefaultResourceLoader, SettingsManager } from '@earendil-works/pi-coding-agent';
-import { getModel } from '@earendil-works/pi-ai/compat';
 import { getStorageInfo, saveAgentSettings, resolveCourseFile, getCourseReferences } from './course-store.mjs';
 import { getLatexEnvironment } from './latex-environment.mjs';
 import { slideTemplates, slideTemplateDirectory, selectSlideTemplate } from './slide-templates.mjs';
@@ -36,6 +35,11 @@ async function preferences() {
   return settings.agent || {};
 }
 
+async function readModelConfig() {
+  try { return JSON.parse(await readFile(join(agentDir, 'models.json'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; return {}; }
+}
+
 export async function initModelRuntime(dataDirectory) {
   dataDir = dataDirectory;
   agentDir = join(dataDirectory, 'agent');
@@ -46,8 +50,8 @@ export async function initModelRuntime(dataDirectory) {
     modelsStorePath: join(agentDir, 'models-store.json'),
   });
   const saved = await preferences();
-  if (saved.provider) savedProvider = saved.provider;
-  if (saved.model) savedModel = saved.model;
+  savedProvider = saved.provider || 'anthropic';
+  savedModel = saved.model || '';
 }
 
 async function reloadModelRuntime() {
@@ -64,6 +68,10 @@ export async function getPiAgentStatus(refresh = false) {
   const saved = await preferences();
   const providerId = saved.provider || savedProvider;
   const providers = modelRuntime.getProviders().map(p => ({ id: p.id, name: p.name }));
+  const modelConfig = await readModelConfig();
+  const providerConfigs = Object.fromEntries(Object.entries(modelConfig.providers || {}).map(([id, config]) => [id, {
+    baseUrl: config.baseUrl || '', model: id === 'custom' ? config.models?.[0]?.id || '' : '',
+  }]));
 
   let models = [];
   let connected = false;
@@ -110,7 +118,8 @@ export async function getPiAgentStatus(refresh = false) {
     provider: providerId,
     providers,
     models,
-    config: { provider: providerId, model: saved.model || savedModel, skillPaths: saved.skillPaths || {} },
+    config: { provider: providerId, model: saved.model ?? savedModel,
+      baseUrl: providerConfigs[providerId]?.baseUrl || '', providerConfigs, skillPaths: saved.skillPaths || {} },
     skills,
     busy: activeRun,
     latex: await getLatexEnvironment(refresh),
@@ -118,17 +127,18 @@ export async function getPiAgentStatus(refresh = false) {
   };
 }
 
-async function writeCustomProvider(baseUrl, modelId) {
+async function writeProviderConfig(config, provider, baseUrl, modelId) {
   const modelsPath = join(agentDir, 'models.json');
-  let config = {};
-  try { config = JSON.parse(await readFile(modelsPath, 'utf8')); }
-  catch { /* file doesn't exist yet */ }
   if (!config.providers) config.providers = {};
-  config.providers.custom = {
-    baseUrl,
-    api: 'openai-completions',
-    models: [{ id: modelId, name: modelId }],
-  };
+  const current = { ...config.providers[provider] };
+  if (baseUrl) current.baseUrl = baseUrl;
+  else delete current.baseUrl;
+  if (provider === 'custom') {
+    current.api = 'openai-completions';
+    current.models = [{ ...current.models?.find(model => model.id === modelId), id: modelId, name: modelId }];
+  }
+  if (Object.keys(current).length) config.providers[provider] = current;
+  else delete config.providers[provider];
   await writeFile(modelsPath, JSON.stringify(config, null, 2), { mode: 0o600 });
   await reloadModelRuntime();
 }
@@ -146,27 +156,33 @@ async function writeApiKey(provider, apiKey) {
 export async function configureProvider(value = {}) {
   if (activeRun) fail(409, '请等待当前操作完成。');
   const saved = await preferences();
-  if (value.provider !== undefined) {
-    if (typeof value.provider !== 'string') fail(400, '请选择有效的 provider。');
-    saved.provider = value.provider;
-    savedProvider = value.provider;
+  const previousProvider = saved.provider || savedProvider;
+  const provider = value.provider ?? previousProvider;
+  if (typeof provider !== 'string' || (provider !== 'custom' && !modelRuntime.getProviders().some(item => item.id === provider))) {
+    fail(400, '请选择有效的 provider。');
   }
+  const modelConfig = await readModelConfig();
+  const current = modelConfig.providers?.[provider];
+  let baseUrl = current?.baseUrl || '';
+  let model = provider === previousProvider ? saved.model ?? savedModel : provider === 'custom' ? current?.models?.[0]?.id || '' : '';
   if (value.apiKey !== undefined) {
     if (typeof value.apiKey !== 'string' || value.apiKey.length > 10000) fail(400, 'API Key 格式不正确。');
-    if (value.apiKey) {
-      await writeApiKey(saved.provider || savedProvider, value.apiKey);
-    }
   }
-  if (value.baseUrl !== undefined && typeof value.baseUrl === 'string') {
-    saved.baseUrl = value.baseUrl;
+  if (value.baseUrl !== undefined) {
+    if (typeof value.baseUrl !== 'string' || value.baseUrl.length > 2000) fail(400, 'Base URL 格式不正确。');
+    baseUrl = value.baseUrl.trim();
+  }
+  if (baseUrl) {
+    let url;
+    try { url = new URL(baseUrl); } catch { fail(400, 'Base URL 需要填写有效的 HTTP 或 HTTPS 地址。'); }
+    if (!['http:', 'https:'].includes(url.protocol)) fail(400, 'Base URL 需要填写有效的 HTTP 或 HTTPS 地址。');
   }
   if (value.model !== undefined) {
     if (typeof value.model !== 'string' || value.model.length > 200) fail(400, '模型名称不正确。');
-    saved.model = value.model;
-    savedModel = value.model;
+    model = value.model.trim();
   }
-  if (saved.provider === 'custom' && saved.baseUrl && saved.model) {
-    await writeCustomProvider(saved.baseUrl, saved.model);
+  if (provider === 'custom' && (!baseUrl || !model)) {
+    fail(400, '自定义 API 需要填写 Base URL 和模型名称。');
   }
   if (value.skillPaths !== undefined) {
     if (!value.skillPaths || typeof value.skillPaths !== 'object' || Array.isArray(value.skillPaths)) fail(400, 'Skill 路径设置不正确。');
@@ -179,7 +195,14 @@ export async function configureProvider(value = {}) {
       saved.skillPaths[id] = path;
     }
   }
+  await writeProviderConfig(modelConfig, provider, baseUrl, model);
+  if (value.apiKey) await writeApiKey(provider, value.apiKey);
+  saved.provider = provider;
+  saved.model = model;
+  delete saved.baseUrl;
   await saveAgentSettings(saved);
+  savedProvider = provider;
+  savedModel = model;
   return getPiAgentStatus();
 }
 
@@ -279,7 +302,7 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
       courseDir: context.courseDir,
     });
 
-    const model = getModel(status.config.provider, status.config.model) || (await modelRuntime.getAvailable()).find(m => m.provider === status.config.provider);
+    const model = modelRuntime.getModel(status.config.provider, status.config.model) || (await modelRuntime.getAvailable()).find(m => m.provider === status.config.provider);
     if (!model) fail(503, '没有找到可用的模型，请检查 API Key 配置。');
 
     const skillFiles = context.skills

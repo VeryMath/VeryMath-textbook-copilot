@@ -35,6 +35,7 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
     if (!status || initialized.current) return;
     initialized.current = true;
     setProvider(status.config.provider || '');
+    setBaseUrl(status.config.baseUrl || '');
     setModelDraft(status.config.model || '');
     setPaths(Object.fromEntries(status.skills.map(skill => [skill.id, skill.path || ''])));
   }, [status]);
@@ -75,15 +76,17 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
   }
 
   function changeProvider(next: AgentProvider) {
-    setProvider(next); setApiKey(''); setBaseUrl(''); setShowKey(false);
-    setModelDraft(next === status?.config.provider ? status.config.model || '' : '');
+    const saved = status?.config.providerConfigs[next];
+    setProvider(next); setApiKey(''); setShowKey(false);
+    setBaseUrl(next === status?.config.provider ? status.config.baseUrl || '' : saved?.baseUrl || '');
+    setModelDraft(next === status?.config.provider ? status.config.model || '' : saved?.model || '');
     setModels([]); setError(''); setNotice('');
   }
 
   async function saveProvider() {
     if (!provider) return;
-    const saved = await perform('保存配置', () => configureProvider({ provider, ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}), ...(provider === 'custom' && modelDraft ? { model: modelDraft } : {}) }), '配置已保存。');
-    if (saved) { setApiKey(''); setShowKey(false); setModelDraft(saved.config.model || ''); }
+    const saved = await perform('保存配置', () => configureProvider({ provider, baseUrl, ...(apiKey ? { apiKey } : {}), ...(provider === 'custom' ? { model: modelDraft } : {}) }), '配置已保存。');
+    if (saved) { setApiKey(''); setShowKey(false); setBaseUrl(saved.config.baseUrl || ''); setModelDraft(saved.config.model || ''); }
   }
 
   const step = connected ? 3 : provider ? 2 : 1;
