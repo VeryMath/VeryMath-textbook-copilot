@@ -240,6 +240,11 @@ export async function* runPiAgent(request, context) {
     const resultPath = resolve(context.outputsDir, resultName);
 
     const skill = context.skills.find(item => item.id === request.skillId);
+    const isWindows = process.platform === 'win32';
+    const shellTool = isWindows ? 'powershell' : 'bash';
+    const nodeCommand = isWindows
+      ? `${process.env.ELECTRON_RUN_AS_NODE === '1' ? "$env:ELECTRON_RUN_AS_NODE='1'; " : ''}& '${process.execPath.replaceAll("'", "''")}'`
+      : `${process.env.ELECTRON_RUN_AS_NODE === '1' ? 'env ELECTRON_RUN_AS_NODE=1 ' : ''}"${process.execPath}"`;
 
     const slidesTask = request.skillId === 'slides' || request.artifact?.kind === 'slides';
     const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].some(kind =>
@@ -265,7 +270,7 @@ LaTeX 环境检查结果：${JSON.stringify(status.latex)}。编译使用检测�
 ${request.scope === 'none' ? '本轮没有选择主教材范围，不附加当前页或章节，也不要自动读取主教材。保留用户明确选定的辅助资料、已有成品和 Skill；若制作任务缺少必要范围，先询问用户。没有这些上下文时直接回答问题。' : ''}
 ${referenceInstructions}
 思维导图、知识图谱、讲解视频和课件的生成与修改，均围绕主教材的内容、章节和用户选定范围组织。上述任务禁止读取或参考本课程上传的辅助资料，包括课程 references 目录中的原文件、对应解析缓存及历史对话中的资料转述。这项要求也适用于自由问答中发起的导图、图谱、视频、PPT 或幻灯片制作。修改已有结果时核对主教材，读取已有结果及其源码。Skill 自带的说明文档和模板资源用于执行制作流程。
-可用的本机 Node.js：${process.env.ELECTRON_RUN_AS_NODE === '1' ? `env ELECTRON_RUN_AS_NODE=1 "${process.execPath}"` : process.execPath}。教材读取工具：read_textbook_pages。纯文字读取用 images=none，需要原页校对用 images=pages，需要独立图片用 images=all。
+命令执行工具：${shellTool}，使用该工具对应的命令语法。可用的本机 Node.js：${nodeCommand}。教材读取工具：read_textbook_pages。纯文字读取用 images=none，需要原页校对用 images=pages，需要独立图片用 images=all。
 可复用的已解析教材按 PDF 页序保存在 ${resolve(context.outputsDir, '.build', 'textbook-content')} 的 page-N.json。目录或对应页不存在时读取原 PDF；选文文件不代表整页，遇到待核对或矛盾内容需回看原页。
 生成成品按类型写入 outputs 下的子目录：讲解与笔记写 outputs/notes/，课件 PDF 与源文件 ZIP 写 outputs/slides/，练习卡片写 outputs/quizzes/，思维导图写 outputs/mindmaps/，知识图谱写 outputs/knowledge-graphs/，视频写 outputs/videos/。编译过程文件、解析中间产物和待检查 JSON 写 ${resolve(context.outputsDir, '.build')}。结果 JSON 的 url 指向成品在 outputs 下的相对路径。不修改教材、阅读记录或对话文件，不执行与用户学习要求无关的系统操作。
 需要用户补充信息时直接在回答中提问。不要要求用户在当前界面执行不存在的交互。
@@ -322,7 +327,7 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
       agentDir: agentDir,
       model,
       modelRuntime,
-      tools: ['read', 'bash', 'edit', 'write', 'read_textbook_pages', 'read_file', 'list_outputs'],
+      tools: ['read', shellTool, 'edit', 'write', 'read_textbook_pages', 'read_file', 'list_outputs'],
       customTools: piTools,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(),
