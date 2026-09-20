@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { openPromise } from 'yauzl';
 
 const execute = promisify(execFile);
 async function command(name, args, signal) {
@@ -20,6 +21,42 @@ function xmlText(xml) {
     .replace(/&#x([\da-f]+);/gi, (_, number) => String.fromCodePoint(parseInt(number, 16)))
     .replace(/&#(\d+);/g, (_, number) => String.fromCodePoint(Number(number)))
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')).join('');
+}
+async function readOfficeXml(path, format, signal) {
+  const archive = await openPromise(path);
+  const files = new Map();
+  try {
+    for await (const entry of archive.eachEntry()) {
+      signal.throwIfAborted();
+      const needed = format === 'docx' ? entry.fileName === 'word/document.xml'
+        : ['ppt/presentation.xml', 'ppt/_rels/presentation.xml.rels'].includes(entry.fileName)
+          || /^ppt\/slides\/[^/]+\.xml$/.test(entry.fileName);
+      if (!needed) continue;
+      if (entry.uncompressedSize > 32 * 1024 * 1024) throw new Error('资料正文过大，请拆分文件后重新导入。');
+      const stream = await archive.openReadStreamPromise(entry);
+      const abort = () => stream.destroy(signal.reason);
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+      try {
+        const chunks = [];
+        let size = 0;
+        for await (const chunk of stream) {
+          size += chunk.length;
+          if (size > 32 * 1024 * 1024) throw new Error('资料正文过大，请拆分文件后重新导入。');
+          chunks.push(chunk);
+        }
+        files.set(entry.fileName, Buffer.concat(chunks).toString('utf8'));
+      } finally {
+        signal.removeEventListener('abort', abort);
+        stream.destroy();
+      }
+    }
+  } finally { archive.close(); }
+  signal.throwIfAborted();
+  return filename => {
+    if (!files.has(filename)) throw new Error(`资料缺少 ${filename}，请重新导出文件后导入。`);
+    return files.get(filename);
+  };
 }
 async function ocrLanguage(signal) {
   const output = await command('tesseract', ['--list-langs'], signal);
@@ -40,13 +77,15 @@ export async function extractReferenceText({ path, format, ocr, signal, onProgre
     const paragraphs = text.split(/\n\s*\n/).filter(value => value.trim());
     paragraphs.forEach((text, index) => add({ paragraph: index + 1, text: text.trim(), source: 'text' }, paragraphs.length));
   } else if (format === 'docx') {
-    const xml = await command('unzip', ['-p', path, 'word/document.xml'], signal);
+    const readXml = await readOfficeXml(path, format, signal);
+    const xml = readXml('word/document.xml');
     const paragraphs = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => xmlText(match[0])).filter(text => text.trim());
     paragraphs.forEach((text, index) => add({ paragraph: index + 1, text, source: 'text' }, paragraphs.length));
     if (!pages.length) warnings.push('文档中未提取到正文。');
   } else if (format === 'pptx') {
-    const presentation = await command('unzip', ['-p', path, 'ppt/presentation.xml'], signal);
-    const relationships = await command('unzip', ['-p', path, 'ppt/_rels/presentation.xml.rels'], signal);
+    const readXml = await readOfficeXml(path, format, signal);
+    const presentation = readXml('ppt/presentation.xml');
+    const relationships = readXml('ppt/_rels/presentation.xml.rels');
     const targets = new Map([...relationships.matchAll(/<Relationship\b[^>]*>/g)].map(([tag]) => {
       const id = /\bId="([^"]+)"/.exec(tag)?.[1];
       const target = /\bTarget="([^"]+)"/.exec(tag)?.[1];
@@ -61,7 +100,7 @@ export async function extractReferenceText({ path, format, ocr, signal, onProgre
     });
     for (const [index, file] of files.entries()) {
       signal.throwIfAborted();
-      const xml = await command('unzip', ['-p', path, file], signal);
+      const xml = readXml(file);
       const text = [...xml.matchAll(/<a:p(?:\s[^>]*)?>[\s\S]*?<\/a:p>/g)].map(match => xmlText(match[0])).join('\n');
       add({ slide: index + 1, text, source: 'text' }, files.length);
     }

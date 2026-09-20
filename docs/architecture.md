@@ -17,7 +17,7 @@
 ## 配置模型服务
 
 1. 打开页面右上角「工作区设置」，在「模型服务 Provider」中选择服务商，或选择「自定义 API（OpenAI 兼容）」。列表来自内置 Agent 运行时的 `ModelRuntime.getProviders()`（未配置自定义服务商时 40 项）；具体方法见 [模型服务接入说明](agent-integration.md)。
-2. 填写 API Key；「自定义 API」再填 Base URL 与模型名称。API Key 不进入课程目录，「自定义 API」的 Key 由本应用写入 `<数据目录>/agent/auth.json`。
+2. 填写 API Key；「自定义 API」再填 Base URL 与模型名称。API Key 不进入课程目录，各服务商的 Key 由本应用写入 `<数据目录>/agent/auth.json`。
 3. 点击「保存并连接」，在「使用模型」中选择模型；自定义 API 直接填写模型名称。关闭设置页即可自由提问。
 4. 在「接入 Skill」配置所需技能的路径，即可启用对应功能按钮。
 
@@ -33,14 +33,14 @@
 
 - `initModelRuntime()` 在服务启动时创建 pi-coding-agent 的 `ModelRuntime`，指向 `<数据目录>/agent/` 下的 `auth.json`、`models.json` 与 `models-store.json`。
 - `getPiAgentStatus()`、`configureProvider()`、`listModels()` 供设置页读写服务商、API Key、Base URL、模型与 Skill 路径。
-- `runPiAgent()` 用 `getModel(provider, model)` 解析模型，再用 `createAgentSession()` 创建会话：`cwd` 为当前课程目录，同时注入模型运行时、内置工具与自定义工具；`SessionManager.inMemory()` 让 pi 会话不落盘，`SettingsManager.inMemory({ compaction: { enabled: false } })` 关闭自动压缩。
+- `runPiAgent()` 用 `modelRuntime.getModel(provider, model)` 读取含地址覆盖的模型，再用 `createAgentSession()` 创建会话：`cwd` 为当前课程目录，同时注入模型运行时、内置工具与自定义工具；Windows 使用 PowerShell，其他平台使用 Bash。`SessionManager.inMemory()` 让 pi 会话不落盘，`SettingsManager.inMemory({ compaction: { enabled: false } })` 关闭自动压缩。
 - 课程要求与 Skill 通过 `DefaultResourceLoader` 注入：`systemPromptOverride` 提供 `server/prompts/course-tutor.md` 与本次任务说明，`skillsOverride` 追加「接入 Skill」中可读的 `SKILL.md`。
 - 会话事件转换成本应用的流式事件：`message_update` 的 `text_delta` 转为 `text`，`tool_execution_start`／`tool_execution_end` 转为 `progress`；任务结束时检查本次待检查 JSON 是否产出资料。
 - 同一时刻只允许一个任务；点击停止或请求中断时调用 `session.abort()`。
 
 每次课程请求创建独立的内存会话，任务结束后不保留 pi 侧会话状态；课程对话始终由本应用写入个人课程目录的 `conversations/`。未配置 Skill 时仍可正常自由问答、绘图和生成资料。
 
-模型凭据由 pi 的 ModelRuntime 管理：内置服务商的 API Key 不落盘，重新保存「自定义 API」配置（会重建运行时）或重启服务后需要重新填写；只有「自定义 API」的 Key 保存在 `<数据目录>/agent/auth.json`（0600）。个人设置中的 `agent` 字段只记录服务商、模型、Base URL 与 Skill 路径，不含 API Key，也不含登录令牌；复制本项目或整个课程目录不会替其他用户配置账号。
+模型凭据由 pi 的 ModelRuntime 读取：各服务商的 API Key 都保存在 `<数据目录>/agent/auth.json`（0600），重新保存「自定义 API」配置（会重建运行时）或重启服务后无需重新填写。个人设置中的 `agent` 字段只记录当前服务商、模型与 Skill 路径；各服务商的 Base URL 保存在 `agent/models.json`。复制本项目或单本课程目录不会带走 API Key，复制完整个人数据目录则会保留已保存的 Key。
 
 所有模型服务收到相同的课程上下文，并被要求只在该课程的 `outputs` 中保存结果。Agent 持有内置的文件与命令工具，工作目录是当前课程目录，因此可以读取教材、运行脚本和编译 LaTeX；这是使用约定，不是操作系统级文件沙箱。
 
@@ -52,14 +52,14 @@
 | --- | --- |
 | `skillId` | 用户选择的操作意图 |
 | `book`、`chapter`、`page` | 当前教材、章节与页码 |
-| `scope` | 当前页、当前节、当前章、选中内容或整本教材 |
+| `scope` | 当前页、当前节、当前章、指定页码、选中内容、整本教材或无范围 |
 | `knowledgeGraphDetail` | 知识图谱深度：`overview` 或 `detailed` |
 | `selectedText`、`pageText` | 选中文字、当前页正文 |
 | `prompt` | 用户要求 |
 | `artifact` | 正在查看的结果，可要求继续修改 |
 | `history` | 当前对话中的问答 |
 
-`scope` 表示范围，不代表整章或整书全文已经放进请求。Agent 可以读取本地教材。
+`scope` 表示范围，不代表整章或整书全文已经放进请求。Agent 可以读取本地教材。“无范围”不附加当前页正文或章节，但仍保留用户明确选中的辅助资料、已有成品和工具要求；点击教材工具时，默认将“无范围”切换为当前页。
 
 `context` 由本机服务提供：
 
@@ -163,7 +163,7 @@
 
 `skillId` 或 `artifact.kind` 为 `slides`、`mindmap`、`knowledge-graph`、`video` 的任务跳过辅助资料清单读取。思维导图、知识图谱、讲解视频和课件围绕主教材的内容、章节和所选范围生成与修改。通用 Agent 指令禁止这些任务参考课程辅助资料，包含原文件、解析缓存和历史对话中的转述；该规则也适用于自由问答中的相关制作请求。修改时核对主教材并读取已有结果及其源码。
 
-Agent 接口包括 `POST /api/agent/configure`（保存服务商、API Key、Base URL、模型与 Skill 路径）、`GET /api/agent/models?provider=...`（该服务商的模型列表）和 `POST /api/agent/run`（课程任务）。写请求使用 JSON 请求体；配置写入个人 `settings.json` 的 `agent` 字段，「自定义 API」的 API Key 写入 `<数据目录>/agent/auth.json`。
+Agent 接口包括 `POST /api/agent/configure`（保存服务商、API Key、Base URL、模型与 Skill 路径）、`GET /api/agent/models?provider=...`（该服务商的模型列表）和 `POST /api/agent/run`（课程任务）。写请求使用 JSON 请求体；配置写入个人 `settings.json` 的 `agent` 字段，各服务商的 API Key 写入 `<数据目录>/agent/auth.json`。
 
 ## 后续开发方向
 

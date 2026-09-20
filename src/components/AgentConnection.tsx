@@ -28,13 +28,14 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
   const [notice, setNotice] = useState('');
   const initialized = useRef(false);
   const locked = !!working || busy || !!status?.busy;
-  const connected = !!status?.connected;
+  const connected = !!status?.connected && provider === status.config.provider;
   const configured = status?.skills.filter(skill => skill.configured).length || 0;
 
   useEffect(() => {
     if (!status || initialized.current) return;
     initialized.current = true;
     setProvider(status.config.provider || '');
+    setBaseUrl(status.config.baseUrl || '');
     setModelDraft(status.config.model || '');
     setPaths(Object.fromEntries(status.skills.map(skill => [skill.id, skill.path || ''])));
   }, [status]);
@@ -49,26 +50,43 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
   }, [active, onChange]);
 
   useEffect(() => {
+    let cancelled = false;
     if (provider && connected) {
-      listModels(provider).then(setModels).catch(() => setModels([]));
-    } else {
       setModels(status?.models || []);
+      listModels(provider).then(value => { if (!cancelled) setModels(value); }).catch(() => { if (!cancelled) setModels([]); });
+    } else {
+      setModels([]);
     }
+    return () => { cancelled = true; };
   }, [provider, connected, status?.models]);
 
   async function perform(label: string, action: () => Promise<AgentStatus>, message = '') {
-    if (locked) return;
+    if (locked) return null;
     setWorking(label); setError(''); setNotice('');
-    try { onChange(await action()); setNotice(message); }
+    try {
+      const next = await action();
+      onChange(next); setNotice(message);
+      return next;
+    }
     catch (err) {
       setError(err instanceof Error ? err.message : '操作未完成，请重试。');
       getAgentStatus().then(onChange).catch(() => {});
+      return null;
     } finally { setWorking(''); }
+  }
+
+  function changeProvider(next: AgentProvider) {
+    const saved = status?.config.providerConfigs[next];
+    setProvider(next); setApiKey(''); setShowKey(false);
+    setBaseUrl(next === status?.config.provider ? status.config.baseUrl || '' : saved?.baseUrl || '');
+    setModelDraft(next === status?.config.provider ? status.config.model || '' : saved?.model || '');
+    setModels([]); setError(''); setNotice('');
   }
 
   async function saveProvider() {
     if (!provider) return;
-    await perform('保存配置', () => configureProvider({ provider, ...(apiKey ? { apiKey } : {}), ...(baseUrl ? { baseUrl } : {}), ...(provider === 'custom' && modelDraft ? { model: modelDraft } : {}) }), '配置已保存。');
+    const saved = await perform('保存配置', () => configureProvider({ provider, baseUrl, ...(apiKey ? { apiKey } : {}), ...(provider === 'custom' ? { model: modelDraft } : {}) }), '配置已保存。');
+    if (saved) { setApiKey(''); setShowKey(false); setBaseUrl(saved.config.baseUrl || ''); setModelDraft(saved.config.model || ''); }
   }
 
   const step = connected ? 3 : provider ? 2 : 1;
@@ -81,7 +99,7 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
     </ol>
 
     <label className="agent-field agent-choice">模型服务 Provider
-      <select aria-label="Provider" value={provider} disabled={locked || !status} onChange={event => setProvider(event.target.value)}>
+      <select aria-label="Provider" value={provider} disabled={locked || !status} onChange={event => changeProvider(event.target.value)}>
         {!status && <option value="">正在读取…</option>}
         {status?.providers.filter(p => p.id !== 'custom').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         <option value="custom">自定义 API（OpenAI 兼容）</option>
@@ -92,12 +110,12 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
     <section className={`agent-card ${connected ? 'is-connected' : ''}`} aria-label="模型配置">
       <div className="agent-card-heading">
         <span className="agent-icon"><Key size={22}/></span>
-        <div><h3>{status?.name || provider || '未选择'}</h3><p>直连 LLM API · 无需安装</p></div>
+        <div><h3>{status?.providers.find(item => item.id === provider)?.name || provider || '未选择'}</h3><p>直连 LLM API · 无需安装</p></div>
         <span className={`agent-phase ${connected ? 'ready' : ''}`}><span className={`status-dot ${connected ? 'online' : ''}`}/>{connected ? '已配置' : '待配置'}</span>
       </div>
-      <p className="agent-description">{status?.message || '正在读取配置…'}</p>
+      <p className="agent-description">{provider === status?.config.provider ? status.message : status ? '填写所选模型服务的配置，然后保存并连接。' : '正在读取配置…'}</p>
 
-      {connected && <div className="agent-account"><Check size={14}/><span>API Key 已验证</span></div>}
+      {connected && <div className="agent-account"><Check size={14}/><span>API Key 已保存</span></div>}
 
       <label className="agent-field">API Key
         <span className="agent-model-input">

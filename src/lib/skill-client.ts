@@ -10,7 +10,8 @@ export interface AgentStatus {
   provider: AgentProvider;
   providers: { id: AgentProvider; name: string }[];
   models: { id: string; name: string; isDefault: boolean }[];
-  config: { provider: AgentProvider; model: string; skillPaths: Record<string, string> };
+  config: { provider: AgentProvider; model: string; baseUrl: string;
+    providerConfigs: Record<string, { baseUrl: string; model: string }>; skillPaths: Record<string, string> };
   skills: (Omit<SkillInfo, 'available'> & { path: string | null; configured: boolean })[];
   busy: boolean;
   latex?: { engine: string; version: string; missing: string[]; preferredMathFonts: boolean; ready: boolean; message: string };

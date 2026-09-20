@@ -45,9 +45,9 @@
 
 提供 macOS 和 Windows 安装包，自带运行环境，无需安装 Node.js 或命令行工具。
 
-**macOS（Apple Silicon）**：打开 `VeryMath-0.1.0-arm64.dmg`，将 VeryMath 拖入 Applications，然后从应用程序中打开。要求 macOS 12 或更新版本。
+**macOS（Apple Silicon）**：打开下载的 `VeryMath-<版本>-arm64.dmg`，将 VeryMath 拖入 Applications，然后从应用程序中打开。要求 macOS 12 或更新版本。
 
-**Windows**：运行 `VeryMath-0.1.0-windows-x64-setup.exe`，按安装向导选择目录后启动。适用于 64 位 Windows 10 或更新版本。安装包未签名，首次运行时 Windows 可能显示 SmartScreen 提示，点击「仍要运行」即可。
+**Windows**：运行下载的 `VeryMath-<版本>-windows-x64-setup.exe`，按安装向导选择目录后启动。适用于 64 位 Windows 10 或更新版本。安装包未签名，首次运行时 Windows 可能显示 SmartScreen 提示，点击「仍要运行」即可。
 
 下载地址见 [Releases](https://github.com/VeryMath/VeryMath-textbook-copilot/releases)。
 
@@ -64,8 +64,8 @@
 
 | 平台 | 命令 | 产物 |
 | --- | --- | --- |
-| macOS | `npm run desktop:dist` | `release/VeryMath-0.1.0-arm64.dmg` |
-| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.1.0-windows-x64-setup.exe` |
+| macOS | `npm run desktop:dist` | `release/VeryMath-0.2.2-arm64.dmg` |
+| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.2.2-windows-x64-setup.exe` |
 
 Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模块正确安装。详见 [桌面版文档](docs/desktop.md)。
 
@@ -92,7 +92,7 @@ npm ci
 npm run build && npm start
 ```
 
-启动地址以终端输出为准（默认 `http://127.0.0.1:4173`，可用 `PORT` 改端口，默认只监听本机）。`npm run dev` 仅供前端调试，模型服务相关接口不会初始化；开发与正式服务共用同一份接口与个人目录。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择模型服务 Provider 并填入 API Key。
+启动地址以终端输出为准（默认 `http://127.0.0.1:4173`，可用 `PORT` 改端口，默认只监听本机）。开发时可用 `npm run dev`；开发、预览与正式服务都会初始化模型服务，并共用同一份接口与个人目录。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择模型服务 Provider 并填入 API Key。
 
 > 前端、本机文件服务与 Agent 运行在同一台部署电脑上；单独把 `dist` 传到静态托管平台无法运行 Agent。
 
@@ -105,7 +105,7 @@ npm run build && npm start
 ```text
 ~/.course-copilot/
 ├── settings.json                   # 当前课程、栏目宽度、模型服务与 Skill 设置
-├── agent/                          # 模型服务配置：auth.json（自定义 API 的 Key，0600）等
+├── agent/                          # 模型服务配置：auth.json（各服务商的 API Key，0600）等
 └── courses/
     └── 面向机器学习的最优化方法/      # 目录名 = 书名；同一本书（sha256 相同）只保留一个
         ├── textbook.pdf            # 原始教材
@@ -136,7 +136,7 @@ COURSE_COPILOT_HOME="$HOME/Documents/我的课程资料" npm start
 
 切换路径后会使用新位置，不自动搬动旧目录。迁移时先停止服务，复制完整个人目录，再指定新位置启动。备份也复制完整目录；生成任务结束后再备份能避免漏掉正在写入的文件。
 
-换电脑后，在新电脑上安装桌面版或浏览器版，在「工作区设置」中重新填入 API Key 即可（内置服务商的 Key 不落盘；「自定义 API」的 Key 随数据目录复制保留）。如果手动填写的 Skill 路径改变，在设置页更新即可。
+换电脑后，在新电脑上安装桌面版或浏览器版并连接复制的完整个人数据目录。已保存的各服务商 API Key 随 `agent/auth.json` 一并保留，重启后也可继续使用；未复制配置时，在「工作区设置」中填写 API Key。如果手动填写的 Skill 路径改变，在设置页更新即可。
 
 应用创建的目录权限为 `0700`，文件为 `0600`。Agent 写入生成文件时也应使用私有权限；服务发布本地文件结果时会将对应文件收紧为 `0600`。不要把个人数据目录作为网页静态目录公开。
 
@@ -154,7 +154,7 @@ Copilot 的“操作范围”适用于所有课程工具。处理连续多页时
 
 资料上传后会在后台提取正文。「搜索全文」按输入的连续文字搜索当前教材的辅助资料，结果显示命中片段和位置，点击 PDF 页码可打开对应页面。已有资料会在首次搜索时提取，页面自动更新进度和结果。PDF 按文件页序标页码，PPTX 按演示顺序标幻灯片序号，TXT、Markdown 和 DOCX 标段落序号。
 
-扫描 PDF 和图片可点击「识别扫描文字」进行光学字符识别（OCR）。部署电脑需安装 Tesseract，中文识别需安装 `chi_sim` 或 `chi_tra` 语言数据；PDF 扫描页还需 Poppler 的 `pdftoppm`。DOCX 与 PPTX 正文提取使用 `unzip`。提取失败时，资料卡片显示原因并提供重试。识别结果中的公式和关键数字应结合原页核对。
+扫描 PDF 和图片可点击「识别扫描文字」进行光学字符识别（OCR）。部署电脑需安装 Tesseract，中文识别需安装 `chi_sim` 或 `chi_tra` 语言数据；PDF 扫描页还需 Poppler 的 `pdftoppm`。DOCX 与 PPTX 正文由应用内的 ZIP 读取库提取，无需另外安装 `unzip`。提取失败时，资料卡片显示原因并提供重试。识别结果中的公式和关键数字应结合原页核对。
 
 配置好模型服务后，界面提供以下课程功能，按当前页、选中内容、当前章节或整本教材的范围调用：
 
