@@ -135,8 +135,9 @@ async function writeProviderConfig(config, provider, baseUrl, modelId) {
   if (baseUrl) current.baseUrl = baseUrl;
   else delete current.baseUrl;
   if (provider === 'custom') {
-    current.api = 'openai-completions';
-    current.models = [{ ...current.models?.find(model => model.id === modelId), id: modelId, name: modelId }];
+    current.api ||= 'openai-completions';
+    current.models = [...(current.models || [])];
+    if (!current.models.some(model => model.id === modelId)) current.models.push({ id: modelId, name: modelId });
   }
   if (Object.keys(current).length) config.providers[provider] = current;
   else delete config.providers[provider];
@@ -196,7 +197,9 @@ export async function configureProvider(value = {}) {
       saved.skillPaths[id] = path;
     }
   }
-  await writeProviderConfig(modelConfig, provider, baseUrl, model);
+  const baseUrlChanged = value.baseUrl !== undefined && baseUrl !== (current?.baseUrl || '');
+  const modelAdded = provider === 'custom' && value.model !== undefined && !current?.models?.some(item => item.id === model);
+  if (baseUrlChanged || modelAdded) await writeProviderConfig(modelConfig, provider, baseUrl, model);
   if (value.apiKey) await writeApiKey(provider, value.apiKey);
   saved.provider = provider;
   saved.model = model;
