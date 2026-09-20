@@ -325,6 +325,8 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
         eventQueue.push({ type: 'progress', message: `正在执行: ${event.toolName}` });
       } else if (event.type === 'tool_execution_end') {
         eventQueue.push({ type: 'progress', message: '工具执行完成' });
+      } else if (event.type === 'auto_retry_start') {
+        eventQueue.push({ type: 'progress', message: `模型连接暂时失败，正在重试（${event.attempt}/${event.maxAttempts}）…` });
       }
       if (resolveEvent) { resolveEvent(); resolveEvent = null; }
     });
@@ -353,6 +355,12 @@ ${JSON.stringify({ chapter: request.chapter, totalPages: context.totalPages, pag
 
     unsubscribe();
     await promptPromise;
+    context.signal?.throwIfAborted();
+
+    const lastAssistant = session.messages.findLast(message => message.role === 'assistant');
+    if (!promptError && ['error', 'aborted'].includes(lastAssistant?.stopReason)) {
+      promptError = new Error(lastAssistant.errorMessage || '模型请求未完成，请检查 API Key、服务地址和网络后重试。');
+    }
 
     if (promptError) {
       yield { type: 'error', message: promptError.message };
