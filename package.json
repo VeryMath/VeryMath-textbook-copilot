@@ -31,7 +31,8 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
