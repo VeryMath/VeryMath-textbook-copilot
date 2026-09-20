@@ -90,7 +90,7 @@ export default function CopilotPanel(props: Props) {
     <div className="copilot-scroll" ref={conversation}>
       <section className="tool-section" aria-label="课程工具">
         <button className="section-label tool-heading" onClick={() => setToolsOpen(!toolsOpen)} aria-expanded={toolsOpen}><span>课程工具 <small>SKILLS</small></span><ChevronDown size={15} className={toolsOpen ? '' : 'rotated'}/></button>
-        {toolsOpen && <div className="skill-grid">{tools.map(tool => <button key={tool.id} className={`skill-tile ${activeSkill === tool.id ? 'selected' : ''}`} aria-pressed={activeSkill === tool.id} onClick={() => { setActiveSkill(tool.id); setPrompt(tool.prompt); input.current?.focus(); }} title={skills.find(item => item.id === tool.id)?.available ? tool.subtitle : `${tool.title}尚待接入，可以先填写要求`}>
+        {toolsOpen && <div className="skill-grid">{tools.map(tool => <button key={tool.id} className={`skill-tile ${activeSkill === tool.id ? 'selected' : ''}`} aria-pressed={activeSkill === tool.id} onClick={() => { setActiveSkill(tool.id); setPrompt(tool.prompt); if (tool.id !== 'chat') setScope(current => current === 'none' ? 'page' : current); input.current?.focus(); }} title={skills.find(item => item.id === tool.id)?.available ? tool.subtitle : `${tool.title}尚待接入，可以先填写要求`}>
           <span className={`tool-icon tool-${tool.id}`}><tool.icon size={18}/></span><span className="tool-copy"><strong>{tool.title}</strong><small>{tool.subtitle}</small></span>
           {!skills.find(item => item.id === tool.id)?.available && <span className="pending-dot" aria-label="待接入"/>}
         </button>)}</div>}
@@ -101,8 +101,8 @@ export default function CopilotPanel(props: Props) {
         <h2>带着问题，读懂这一页</h2>
         <p>选择一个学习工具，或选中教材中的内容，<br/>把你的疑问留在这里。</p>
         <div className="starter-prompts">
-          <button onClick={() => { setActiveSkill('explain'); setPrompt('这部分内容的核心思想是什么？请用一个直观的例子解释。'); input.current?.focus(); }}>这部分的核心思想是什么？<ArrowUpRight size={15}/></button>
-          <button onClick={() => { setActiveSkill('chat'); setPrompt('学习当前内容前，需要先掌握哪些知识？'); input.current?.focus(); }}>我需要先掌握哪些知识？<ArrowUpRight size={15}/></button>
+          <button onClick={() => { setActiveSkill('explain'); setPrompt('这部分内容的核心思想是什么？请用一个直观的例子解释。'); setScope(current => current === 'none' ? 'page' : current); input.current?.focus(); }}>这部分的核心思想是什么？<ArrowUpRight size={15}/></button>
+          <button onClick={() => { setActiveSkill('chat'); setPrompt('学习当前内容前，需要先掌握哪些知识？'); setScope(current => current === 'none' ? 'page' : current); input.current?.focus(); }}>我需要先掌握哪些知识？<ArrowUpRight size={15}/></button>
         </div>
       </div> : <div className="messages" aria-live="polite">{messages.map(message => <article key={message.id} className={`message message-${message.role}`}>
         {message.role === 'assistant' && <div className="message-name"><Sparkles size={14}/> Copilot</div>}

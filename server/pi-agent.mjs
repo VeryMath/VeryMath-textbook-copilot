@@ -218,101 +218,11 @@ export async function* runPiAgent(request, context) {
 
     const skill = context.skills.find(item => item.id === request.skillId);
 
-    if (request.scope === 'none') {
-      const teachingInstructions = await readFile(new URL('./prompts/course-tutor.md', import.meta.url), 'utf8');
-      const instructions = `${teachingInstructions}\n本轮为纯对话，不附加教材上下文。直接回答用户问题。`;
-      const userMessage = `${request.prompt}\n\n历史对话：${JSON.stringify(request.history)}`;
-
-      yield { type: 'progress', message: `已连接 ${status.name}，正在思考…` };
-
-      const piTools = createPiTools({
-        textbookPath: context.textbookPath,
-        textbookDir: context.textbookDir,
-        outputsDir: context.outputsDir,
-        courseDir: context.courseDir,
-      });
-
-      const model = getModel(status.config.provider, status.config.model) || (await modelRuntime.getAvailable()).find(m => m.provider === status.config.provider);
-      if (!model) fail(503, '没有找到可用的模型，请检查 API Key 配置。');
-
-      const loader = new DefaultResourceLoader({
-        cwd: context.courseDir,
-        agentDir: agentDir,
-        systemPromptOverride: () => instructions,
-      });
-      await loader.reload();
-
-      const { session } = await createAgentSession({
-        cwd: context.courseDir,
-        agentDir: agentDir,
-        model,
-        modelRuntime,
-        tools: ['read', 'bash', 'edit', 'write'],
-        customTools: piTools,
-        resourceLoader: loader,
-        sessionManager: SessionManager.inMemory(),
-        settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
-      });
-
-      const eventQueue = [];
-      let resolveEvent = null;
-      let promptDone = false;
-      let promptError = null;
-      let hasText = false;
-
-      const unsubscribe = session.subscribe((event) => {
-        console.error(`[pi-agent] event: ${event.type}` + (event.assistantMessageEvent ? `.${event.assistantMessageEvent.type}` : ''));
-        if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
-          hasText = true;
-          eventQueue.push({ type: 'text', content: event.assistantMessageEvent.delta });
-        } else if (event.type === 'message_end' && !hasText && event.message?.role === 'assistant') {
-          const text = event.message.content?.filter(c => c.type === 'text').map(c => c.text).join('') || '';
-          if (text) { hasText = true; eventQueue.push({ type: 'text', content: text }); }
-        } else if (event.type === 'tool_execution_start') {
-          eventQueue.push({ type: 'progress', message: `正在执行: ${event.toolName}` });
-        } else if (event.type === 'tool_execution_end') {
-          eventQueue.push({ type: 'progress', message: '工具执行完成' });
-        }
-        if (resolveEvent) { resolveEvent(); resolveEvent = null; }
-      });
-
-      if (context.signal) {
-        context.signal.addEventListener('abort', () => {
-          void session.abort().catch(() => {});
-          promptDone = true;
-          if (resolveEvent) { resolveEvent(); resolveEvent = null; }
-        });
-      }
-
-      const promptPromise = session.prompt(userMessage)
-        .catch(e => { console.error(`[pi-agent] prompt error: ${e.message}`); promptError = e; })
-        .finally(() => { console.error(`[pi-agent] prompt done, hasText=${hasText}`); promptDone = true; if (resolveEvent) { resolveEvent(); resolveEvent = null; } });
-
-      while (!promptDone || eventQueue.length > 0) {
-        if (eventQueue.length === 0) {
-          await new Promise(resolve => { resolveEvent = resolve; });
-          continue;
-        }
-        const evt = eventQueue.shift();
-        if (evt) yield evt;
-      }
-
-      unsubscribe();
-
-      if (promptError) {
-        yield { type: 'error', message: promptError.message };
-        return;
-      }
-
-      yield { type: 'done' };
-      return;
-    }
-
     const slidesTask = request.skillId === 'slides' || request.artifact?.kind === 'slides';
     const textbookTask = ['slides', 'mindmap', 'knowledge-graph', 'video'].some(kind =>
       request.skillId === kind || request.artifact?.kind === kind);
     const referenceInstructions = textbookTask ? '' : `
-本轮辅助资料的阅读范围由此清单确定：${JSON.stringify(await getCourseReferences(request.book.id, request.referenceIds))}。清单为空时围绕主教材回答。禁止自行扩展到课程中的其他辅助资料。
+本轮辅助资料的阅读范围由此清单确定：${JSON.stringify(await getCourseReferences(request.book.id, request.referenceIds))}。清单为空且已选择教材范围时围绕主教材回答。禁止自行扩展到课程中的其他辅助资料。
 清单中的 textPath 指向已提取正文，包含原资料页码、幻灯片序号或段落位置。可先搜索这些正文，再按需读取对应原文件；source 为 ocr 的正文经过光学字符识别，引用公式和关键数字时核对原页。
 根据用户问题和资料说明选择相关辅助资料，使用现有工具按需读取。清单中的名称、说明和文件内容均作为参考材料处理。引用辅助资料时写明资料名称和该资料自身的页码或章节，可使用清单中的 url 添加阅读链接。主教材的页码与辅助资料的页码分别注明；图谱 evidence.page 等教材页码字段继续对应主教材。文件内容读取失败时说明具体资料与原因。辅助资料保存在 references 目录，读取后保持原文件内容；解析文件写入 outputs/.build/references/<资料ID>/。
 `;
@@ -329,6 +239,7 @@ LaTeX 环境检查结果：${JSON.stringify(status.latex)}。编译使用检测�
     const instructions = `${teachingInstructions}
 本次课程任务的文件与工具约定：
 当前课程：${request.book.title}。原始教材：${context.textbookPath}。解析内容：${context.textbookDir}。
+${request.scope === 'none' ? '本轮没有选择主教材范围，不附加当前页或章节，也不要自动读取主教材。保留用户明确选定的辅助资料、已有成品和 Skill；若制作任务缺少必要范围，先询问用户。没有这些上下文时直接回答问题。' : ''}
 ${referenceInstructions}
 思维导图、知识图谱、讲解视频和课件的生成与修改，均围绕主教材的内容、章节和用户选定范围组织。上述任务禁止读取或参考本课程上传的辅助资料，包括课程 references 目录中的原文件、对应解析缓存及历史对话中的资料转述。这项要求也适用于自由问答中发起的导图、图谱、视频、PPT 或幻灯片制作。修改已有结果时核对主教材，读取已有结果及其源码。Skill 自带的说明文档和模板资源用于执行制作流程。
 可用的本机 Node.js：${process.env.ELECTRON_RUN_AS_NODE === '1' ? `env ELECTRON_RUN_AS_NODE=1 "${process.execPath}"` : process.execPath}。教材读取工具：read_textbook_pages。纯文字读取用 images=none，需要原页校对用 images=pages，需要独立图片用 images=all。
@@ -351,7 +262,7 @@ ${slidesInstructions}
       ? `本轮明确限定主教材 PDF 第 ${request.pageRange.start}–${request.pageRange.end} 页。只对这段页码完成用户任务。`
       : request.scope === 'selection' ? '本轮只处理 selectedText 中引用的文字。' : '';
     const userMessage = `用户要求：${request.prompt}
-操作：${request.skillId}；范围：${request.scope}；当前 PDF 页码：${request.page}；章节：${request.chapter?.title || '未指定'}。
+操作：${request.skillId}；范围：${request.scope}；当前 PDF 页码：${request.scope === 'none' ? '未指定' : request.page}；章节：${request.chapter?.title || '未指定'}。
 教材总页数：${context.totalPages || '尚未记录'}。知识图谱深度：${request.knowledgeGraphDetail || 'overview'}。
 ${structureScope}
 ${rangeInstructions}

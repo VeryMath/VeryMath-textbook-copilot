@@ -202,38 +202,11 @@ export default function App() {
       if (error) { setToast(error); return; }
     }
     if (scope === 'selection' && !selectedText.trim()) { setToast('请先在教材上拖选文字，或改用指定页码。'); return; }
-    if (scope === 'none') {
-      const abort=new AbortController(); controller.current=abort; setBusy(true);
-      setMobileView('copilot');
-      const userId=crypto.randomUUID(), assistantId=crypto.randomUUID();
-      setMessages(current=>[...current,{id:userId,role:'user',content:prompt,skillId},{id:assistantId,role:'assistant',content:'',skillId,status:'running',startedAt:Date.now(),progress:'请求已发送…'}]);
-      try {
-        await runSkill({skillId,referenceIds:[],book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:undefined,page:1,scope:'none',selectedText:'',pageText:'',prompt,artifact:undefined,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
-          if(abort.signal.aborted || controller.current!==abort) return;
-          if(event.type==='artifact') {
-            const artifact=event.artifact;
-            setArtifacts(current=>[...current.filter(item=>item.id!==artifact.id),artifact]); openArtifact(artifact);
-          }
-          setMessages(current=>current.map(message=>{
-            if(message.id!==assistantId) return message;
-            if(event.type==='progress') return {...message,progress:event.message};
-            if(event.type==='text') return {...message,content:message.content+event.content};
-            if(event.type==='artifact') return {...message,artifacts:[...(message.artifacts||[]).filter(item=>item.id!==event.artifact.id),event.artifact]};
-            if(event.type==='done') return {...message,status:'done',progress:undefined};
-            if(event.type==='error') return {...message,status:'error',progress:event.message};
-            return message;
-          }));
-        },abort.signal);
-      } catch(error) {
-        if(!abort.signal.aborted && controller.current===abort) setMessages(current=>current.map(message=>message.id===assistantId?{...message,status:'error',progress:error instanceof Error?error.message:'学习工具暂时无法连接。'}:message));
-      } finally { if(controller.current===abort) {controller.current=null;setBusy(false);} }
-      return;
-    }
     const quotePages = selectedText ? selectionPages : null;
     const quotedPages = scope === 'selection' ? quotePages : null;
-    const requestPage = scope === 'range' ? pageRange!.start : artifactOverride?.source?.page ?? quotedPages?.start ?? page;
+    const requestPage = scope === 'none' ? 1 : scope === 'range' ? pageRange!.start : artifactOverride?.source?.page ?? quotedPages?.start ?? page;
     const readingScope = getReadingScope(book.chapters, requestPage);
-    const requestChapter = scope === 'section' ? readingScope.section
+    const requestChapter = scope === 'none' ? undefined : scope === 'section' ? readingScope.section
       : scope === 'chapter' ? readingScope.chapter
       : book.chapters.filter(item => item.page <= requestPage).at(-1);
     const quote = quotePages ? '引用来自 PDF 第 ' + quotePages.start + (quotePages.end === quotePages.start ? '' : '–' + quotePages.end) + ' 页：\n' + selectedText : selectedText;
@@ -246,7 +219,7 @@ export default function App() {
     const submittedPrompt = scope === 'range' ? `【教材 PDF 第 ${pageRange!.start}–${pageRange!.end} 页】\n${prompt}` : prompt;
     setMessages(current=>[...current,{id:userId,role:'user',content:submittedPrompt,skillId,references:references.map(({id,title,url})=>({id,title,url}))},{id:assistantId,role:'assistant',content:'',skillId,status:'running',startedAt:Date.now(),progress:'请求已发送，正在准备课程任务…'}]);
     try {
-      await runSkill({skillId,referenceIds:references.map(item=>item.id),...(skillId==='slides' && templateId ? {templateId} : {}),book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:requestChapter,page:requestPage,scope,...(scope==='range'?{pageRange}:{}),...(skillId==='knowledge-graph'?{knowledgeGraphDetail:knowledgeGraphDetail||'overview'}:{}),selectedText:!artifactOverride && scope==='selection'?quote:'',pageText:requestPage===page?pageText:'',prompt,artifact:artifactOverride ?? contextArtifact,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
+      await runSkill({skillId,referenceIds:references.map(item=>item.id),...(skillId==='slides' && templateId ? {templateId} : {}),book:{id:book.id,title:book.title,filename:book.filename,totalPages:book.totalPages,local:book.local},chapter:requestChapter,page:requestPage,scope,...(scope==='range'?{pageRange}:{}),...(skillId==='knowledge-graph'?{knowledgeGraphDetail:knowledgeGraphDetail||'overview'}:{}),selectedText:!artifactOverride && scope==='selection'?quote:'',pageText:scope!=='none' && requestPage===page?pageText:'',prompt,artifact:requestedArtifact,history:messages.filter(message=>message.status!=='error' && message.status!=='stopped').map(({role,content})=>({role,content}))},event=>{
         if(abort.signal.aborted || controller.current!==abort) return;
         if(event.type==='artifact') {
           const artifact=event.artifact;
