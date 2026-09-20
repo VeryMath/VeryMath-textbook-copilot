@@ -133,12 +133,12 @@ async function writeCustomProvider(baseUrl, modelId) {
   await reloadModelRuntime();
 }
 
-async function writeCustomApiKey(apiKey) {
+async function writeApiKey(provider, apiKey) {
   const authPath = join(agentDir, 'auth.json');
   let auth = {};
   try { auth = JSON.parse(await readFile(authPath, 'utf8')); }
-  catch { /* file doesn't exist yet */ }
-  auth.custom = { type: 'api_key', key: apiKey };
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  auth[provider] = { type: 'api_key', key: apiKey };
   await writeFile(authPath, JSON.stringify(auth, null, 2), { mode: 0o600 });
   await reloadModelRuntime();
 }
@@ -154,11 +154,7 @@ export async function configureProvider(value = {}) {
   if (value.apiKey !== undefined) {
     if (typeof value.apiKey !== 'string' || value.apiKey.length > 10000) fail(400, 'API Key 格式不正确。');
     if (value.apiKey) {
-      if (saved.provider === 'custom') {
-        await writeCustomApiKey(value.apiKey);
-      } else {
-        await modelRuntime.setRuntimeApiKey(saved.provider, value.apiKey);
-      }
+      await writeApiKey(saved.provider || savedProvider, value.apiKey);
     }
   }
   if (value.baseUrl !== undefined && typeof value.baseUrl === 'string') {
