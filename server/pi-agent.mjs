@@ -71,8 +71,12 @@ export async function getPiAgentStatus(refresh = false) {
   const providers = modelRuntime.getProviders().map(p => ({ id: p.id, name: p.name }));
   const modelConfig = await readModelConfig();
   const providerConfigs = Object.fromEntries(Object.entries(modelConfig.providers || {}).map(([id, config]) => [id, {
-    baseUrl: config.baseUrl || '', model: id === 'custom' ? config.models?.[0]?.id || '' : '',
+    baseUrl: (id === 'custom' ? config.models?.[0]?.baseUrl : '') || config.baseUrl || '',
+    model: id === 'custom' ? config.models?.[0]?.id || '' : '',
   }]));
+  const selectedModel = saved.model ?? savedModel;
+  const selectedBaseUrl = providerId === 'custom'
+    ? modelConfig.providers?.custom?.models?.find(model => model.id === selectedModel)?.baseUrl : '';
 
   let models = [];
   let connected = false;
@@ -119,8 +123,9 @@ export async function getPiAgentStatus(refresh = false) {
     provider: providerId,
     providers,
     models,
-    config: { provider: providerId, model: saved.model ?? savedModel,
-      baseUrl: providerConfigs[providerId]?.baseUrl || '', providerConfigs, skillPaths: saved.skillPaths || {} },
+    config: { provider: providerId, model: selectedModel,
+      baseUrl: selectedBaseUrl || modelConfig.providers?.[providerId]?.baseUrl || providerConfigs[providerId]?.baseUrl || '',
+      providerConfigs, skillPaths: saved.skillPaths || {} },
     skills,
     busy: activeRun,
     latex: await getLatexEnvironment(refresh),
@@ -132,11 +137,14 @@ async function writeProviderConfig(config, provider, baseUrl, modelId) {
   const modelsPath = join(agentDir, 'models.json');
   if (!config.providers) config.providers = {};
   const current = { ...config.providers[provider] };
-  if (baseUrl) current.baseUrl = baseUrl;
-  else delete current.baseUrl;
+  const modelHasAddress = provider === 'custom' && current.models?.some(model => model.id === modelId && model.baseUrl);
+  if (!modelHasAddress) {
+    if (baseUrl) current.baseUrl = baseUrl;
+    else delete current.baseUrl;
+  }
   if (provider === 'custom') {
     current.api ||= 'openai-completions';
-    current.models = [...(current.models || [])];
+    current.models = (current.models || []).map(model => model.id === modelId && modelHasAddress ? { ...model, baseUrl } : model);
     if (!current.models.some(model => model.id === modelId)) current.models.push({ id: modelId, name: modelId });
   }
   if (Object.keys(current).length) config.providers[provider] = current;
@@ -165,8 +173,13 @@ export async function configureProvider(value = {}) {
   }
   const modelConfig = await readModelConfig();
   const current = modelConfig.providers?.[provider];
-  let baseUrl = current?.baseUrl || '';
   let model = provider === previousProvider ? saved.model ?? savedModel : provider === 'custom' ? current?.models?.[0]?.id || '' : '';
+  if (value.model !== undefined) {
+    if (typeof value.model !== 'string' || value.model.length > 200) fail(400, '模型名称不正确。');
+    model = value.model.trim();
+  }
+  const storedBaseUrl = (provider === 'custom' ? current?.models?.find(item => item.id === model)?.baseUrl : '') || current?.baseUrl || '';
+  let baseUrl = storedBaseUrl;
   if (value.apiKey !== undefined) {
     if (typeof value.apiKey !== 'string' || value.apiKey.length > 10000) fail(400, 'API Key 格式不正确。');
   }
@@ -178,10 +191,6 @@ export async function configureProvider(value = {}) {
     let url;
     try { url = new URL(baseUrl); } catch { fail(400, 'Base URL 需要填写有效的 HTTP 或 HTTPS 地址。'); }
     if (!['http:', 'https:'].includes(url.protocol)) fail(400, 'Base URL 需要填写有效的 HTTP 或 HTTPS 地址。');
-  }
-  if (value.model !== undefined) {
-    if (typeof value.model !== 'string' || value.model.length > 200) fail(400, '模型名称不正确。');
-    model = value.model.trim();
   }
   if (provider === 'custom' && (!baseUrl || !model)) {
     fail(400, '自定义 API 需要填写 Base URL 和模型名称。');
@@ -197,7 +206,7 @@ export async function configureProvider(value = {}) {
       saved.skillPaths[id] = path;
     }
   }
-  const baseUrlChanged = value.baseUrl !== undefined && baseUrl !== (current?.baseUrl || '');
+  const baseUrlChanged = value.baseUrl !== undefined && baseUrl !== storedBaseUrl;
   const modelAdded = provider === 'custom' && value.model !== undefined && !current?.models?.some(item => item.id === model);
   if (baseUrlChanged || modelAdded) await writeProviderConfig(modelConfig, provider, baseUrl, model);
   if (value.apiKey) await writeApiKey(provider, value.apiKey);
