@@ -33,9 +33,11 @@
 | OpenAI | GPT 系列模型，填入 API Key 即可 |
 | Google | Gemini 系列模型，填入 API Key 即可 |
 | DeepSeek | DeepSeek 系列模型，填入 API Key 即可 |
-| 自定义 | 任何 OpenAI Chat Completions 兼容接口，填入 Base URL 和 API Key |
+| 自定义 | 任何 OpenAI Chat Completions 兼容接口，填入 Base URL、模型名称和 API Key |
 
-在「工作区设置」中选择 Provider 并填入 API Key，选择模型后即可开始提问。
+以上之外还有 OpenRouter、xAI、Groq、Moonshot、Z.AI 等服务商，完整列表以「工作区设置」中实际显示的为准。
+
+在「工作区设置」中选择模型服务 Provider 并填入 API Key，选择模型后即可开始提问。
 
 ## 快速开始
 
@@ -49,7 +51,7 @@
 
 下载地址见 [Releases](https://github.com/VeryMath/VeryMath-textbook-copilot/releases)。
 
-启动后，前往「工作区设置」选择 LLM Provider 并填入 API Key，选择模型后即可开始提问。默认课程目录：
+启动后，前往「工作区设置」选择模型服务 Provider 并填入 API Key，选择模型后即可开始提问。默认课程目录：
 
 - macOS：`~/.course-copilot`
 - Windows：`%USERPROFILE%\.course-copilot`
@@ -74,7 +76,7 @@ Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模�
 最省事的安装方式是把下面这段发给你使用的 Coding Agent，它会自动完成依赖安装、内置 Skill 配置、服务启动，并返回访问地址：
 
 ```text
-拉取 https://github.com/ConanXu-math/course-copilot，
+拉取 https://github.com/VeryMath/VeryMath-textbook-copilot，
 按仓库里的 skills/verymath-install/SKILL.md 完成 VeryMath 智慧教材的本机部署：
 检查并安装必要依赖，配置内置课程 Skill，启动工作台并给我访问地址。
 ```
@@ -84,17 +86,17 @@ Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模�
 手动安装：在要部署的电脑上准备 Node.js 22.13 或更新版本，然后：
 
 ```bash
-git clone https://github.com/ConanXu-math/course-copilot.git
-cd course-copilot
-npm install --package-lock=false
-npm run dev
+git clone https://github.com/VeryMath/VeryMath-textbook-copilot.git
+cd VeryMath-textbook-copilot
+npm ci
+npm run build && npm start
 ```
 
-开发地址以终端输出为准（通常 `http://127.0.0.1:5173`）。正式运行 `npm run build && npm start`，默认地址 `http://127.0.0.1:4173`，可用 `PORT` 改端口，默认只监听本机。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择 LLM Provider 并填入 API Key。
+启动地址以终端输出为准（默认 `http://127.0.0.1:4173`，可用 `PORT` 改端口，默认只监听本机）。`npm run dev` 仅供前端调试，模型服务相关接口不会初始化；开发与正式服务共用同一份接口与个人目录。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择模型服务 Provider 并填入 API Key。
 
 > 前端、本机文件服务与 Agent 运行在同一台部署电脑上；单独把 `dist` 传到静态托管平台无法运行 Agent。
 
-程序位置优先从该电脑的 `PATH` 查找，也支持在页面中填写完整路径。源码不依赖任何开发者的用户名、个人目录或账号。macOS 和 Windows 已进行实际安装与页面验证；Linux 使用相同 Node.js 启动方式。
+源码不依赖任何开发者的用户名、个人目录或账号。macOS 和 Windows 已进行实际安装与页面验证；Linux 使用相同 Node.js 启动方式。
 
 ## 个人数据目录
 
@@ -102,7 +104,8 @@ npm run dev
 
 ```text
 ~/.course-copilot/
-├── settings.json                   # 当前课程、栏目宽度、Agent 与 Skill 设置
+├── settings.json                   # 当前课程、栏目宽度、模型服务与 Skill 设置
+├── agent/                          # 模型服务配置：auth.json（自定义 API 的 Key，0600）等
 └── courses/
     └── 面向机器学习的最优化方法/      # 目录名 = 书名；同一本书（sha256 相同）只保留一个
         ├── textbook.pdf            # 原始教材
@@ -133,7 +136,7 @@ COURSE_COPILOT_HOME="$HOME/Documents/我的课程资料" npm start
 
 切换路径后会使用新位置，不自动搬动旧目录。迁移时先停止服务，复制完整个人目录，再指定新位置启动。备份也复制完整目录；生成任务结束后再备份能避免漏掉正在写入的文件。
 
-换电脑后，在新电脑上安装桌面版或浏览器版，在「工作区设置」中重新填入 API Key 即可。如果手动填写的 Skill 路径改变，在设置页更新即可。
+换电脑后，在新电脑上安装桌面版或浏览器版，在「工作区设置」中重新填入 API Key 即可（内置服务商的 Key 不落盘；「自定义 API」的 Key 随数据目录复制保留）。如果手动填写的 Skill 路径改变，在设置页更新即可。
 
 应用创建的目录权限为 `0700`，文件为 `0600`。Agent 写入生成文件时也应使用私有权限；服务发布本地文件结果时会将对应文件收紧为 `0600`。不要把个人数据目录作为网页静态目录公开。
 
@@ -153,7 +156,7 @@ Copilot 的“操作范围”适用于所有课程工具。处理连续多页时
 
 扫描 PDF 和图片可点击「识别扫描文字」进行光学字符识别（OCR）。部署电脑需安装 Tesseract，中文识别需安装 `chi_sim` 或 `chi_tra` 语言数据；PDF 扫描页还需 Poppler 的 `pdftoppm`。DOCX 与 PPTX 正文提取使用 `unzip`。提取失败时，资料卡片显示原因并提供重试。识别结果中的公式和关键数字应结合原页核对。
 
-连接 Agent 后，界面提供以下课程功能，按当前页、选中内容、当前章节或整本教材的范围调用：
+配置好模型服务后，界面提供以下课程功能，按当前页、选中内容、当前章节或整本教材的范围调用：
 
 - **教材解析**：把选定页或章节整理为可读的数字教材，提取正文、公式、图片和目录。
 - **讲解内容**：依据教材对概念、定理、算法和例题做分层讲解，可主动配图。
@@ -168,7 +171,8 @@ Copilot 的“操作范围”适用于所有课程工具。处理连续多页时
 ## 文档
 
 - [用户手册](docs/user-guide.md) — 安装、启动与日常使用。
-- [架构与开发参考](docs/architecture.md) — 三层分工、Agent 连接机制、课程任务数据流、模块清单。
+- [架构与开发参考](docs/architecture.md) — 三层分工、模型服务配置、课程任务数据流、模块清单。
+- [模型服务接入](docs/agent-integration.md) — 服务商、API Key、自定义端点与模型能力声明。
 - [Skill 模块开发与接入](docs/skill-development.md) — 如何新增或修改一个课程 Skill。
 - [桌面版](docs/desktop.md) — macOS 与 Windows 桌面应用的实现、构建与打包说明。
 - [数学与算法实验（规划中）](docs/math-experiments.md)、[知识点学习流程（规划中）](docs/learning-flow.md) — 后续方向。

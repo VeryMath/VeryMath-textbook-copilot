@@ -45,33 +45,32 @@ HOST=127.0.0.1 PORT=4173 COURSE_COPILOT_HOME="$HOME/.course-copilot" nohup node 
 | --- | --- |
 | GET /api/storage | 读取实际个人目录 directory 和已有 settings |
 | GET /api/agent/status | 读取 config、providers、connected、phase、busy、models、skills、latex |
-| PATCH /api/agent/config | 合并修改 provider、mode、executable、args、model、skillPaths |
-| POST /api/agent/connect，正文 {} | 使用当前配置连接 |
-| POST /api/agent/login | 发起登录；默认正文 {}，需要选择方式时传入 status.authMethods 中的真实 authMethod |
-| GET /api/skills | 查看课程功能是否可用；available 同时要求已连接与 Skill 已配置 |
+| POST /api/agent/configure | 合并修改 provider、apiKey、baseUrl、model、skillPaths |
+| GET /api/agent/models?provider=<ID> | 读取该服务商的可用模型 |
+| GET /api/skills | 查看课程功能是否可用；available 同时要求模型服务已配置与 Skill 已配置 |
 
-先检查 busy，正在执行任务时不更换配置或断开。选择 Agent 的请求例如 {"provider":"opencode","mode":"acp"}；provider 必须是 status.providers 中实际存在的 ID，不假定调用安装的 Agent 就一定受支持。
+先检查 busy，正在执行任务时不更换配置。切换服务商的请求例如 {"provider":"anthropic"}；provider 必须是 status.providers 中实际存在的 ID（自定义端点的 custom 是例外，保存后才会出现在列表中）。自定义端点使用 provider "custom"，并在同一次请求中给出 baseUrl 与 model。API Key 由用户本人在设置页填写，安装过程不要代填。
 
-新安装的课程 Skill 默认路径由注册表计算，无需写个人绝对路径。确需修复时，读取 server/skills/tutoring.mjs、structure.mjs、materials.mjs 导出的条目，从本地注册表取得实际 path，只 PATCH 需要修复的项，例如：
+新安装的课程 Skill 默认路径由注册表计算，无需写个人绝对路径。确需修复时，读取 server/skills/tutoring.mjs、structure.mjs、materials.mjs 导出的条目，从本地注册表取得实际 path，只提交需要修复的项（POST /api/agent/configure），例如：
 
 ```json
 {"skillPaths":{"quiz":"/实际项目目录/skills/quiz/SKILL.md"}}
 ```
 
-不要将整个状态响应作为 PATCH 正文。保留有效自定义路径和主动停用的项；若用户明确要求恢复全部内置 Skill，再按注册表恢复相应路径。video 的默认 path 为 null，不包含在内置配置完成的数量里。很旧的目录位置已失效时，可以更新为这次安装的对应文件。
+不要将整个状态响应作为配置请求正文。保留有效自定义路径和主动停用的项；若用户明确要求恢复全部内置 Skill，再按注册表恢复相应路径。video 的默认 path 为 null，不包含在内置配置完成的数量里。很旧的目录位置已失效时，可以更新为这次安装的对应文件。
 
-Codex、Claude 使用仓库自带 ACP 组件时 executable 留空，不填普通 CLI 路径代替适配器。其他预设 Agent 的默认参数由 agent-providers.mjs 提供。模型只能在连接后选取 status.models 中的真实 ID，支持手填的接口除外；没有指定模型时保持原设置。
+模型在保存 API Key 后从 status.models 或 GET /api/agent/models 中选取；没有指定模型时保持原设置。自定义服务商需要在同一次配置请求中给出 baseUrl 与 model。
 
 ## 图片输入能力
 
-检查所选模型、API 服务和 Agent 是否支持图片输入，不能将连接成功视为多模态已就绪。OpenCode 自定义模型如需声明图片能力，在已有 provider 的对应 models 条目中合并 `modalities: { input: ["text", "image"], output: ["text"] }`，保留原有字段及其他支持的输入类型。只有确认模型与接口支持图片时才修改；没有显式声明不一定意味着图片已禁用。
+检查所选模型与 API 服务是否支持图片输入，不能将配置成功视为多模态已就绪。自建或中转的模型需要在 `<数据目录>/agent/models.json` 的对应 models 条目中把 `input` 写成 `["text", "image"]`，保留原有字段。只有确认模型与接口支持图片时才修改；没有声明图片能力时，随消息发送的图片会被替换成 `(image omitted: model does not support images)` 这类占位文本。
 
-工作台会继承 OpenCode 的 provider/model 配置，修改后断开并重新连接。使用真实教材截图确认模型能识别其中内容；无法验证时说明图片能力待确认，不直接认定模型不支持，也不盲目开启。具体说明见项目 docs/agent-integration.md 的“图片输入与扫描教材”。
+修改 models.json 后需要重启服务才会被运行时读取。使用真实教材截图确认模型能识别其中内容；无法验证时说明图片能力待确认，不直接认定模型不支持，也不盲目开启。具体说明见项目 docs/agent-integration.md 的“图片输入与扫描教材”。
 
 ## 就绪判断
 
 - 首页实际返回应用 HTML，引用的 JS/CSS 能加载；不是“页面尚未构建”的返回内容。
 - /api/storage 的目录是此次选择的目录，原有课程和设置保留。
 - status.skills 中六个内置条目的 configured 为 true，或明确列出用户主动停用项；这只表示文件可读。
-- status.connected 为 true 才能说明 Agent 已连接，CLI 兼容入口是否能推理仍以真实执行为准。未登录或连接失败时保留可用页面，给出实际处理方法。
+- status.connected 为 true 才能说明凭据可读，模型是否可用仍以真实执行为准。未配置或调用失败时保留可用页面，给出实际处理方法。
 - 课件依赖和真实教材读取分别报告实际检查结果，不将“安装完成”扩大成每个 Skill 都已完成生成验证。

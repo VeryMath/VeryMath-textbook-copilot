@@ -12,7 +12,7 @@
 
 ## 资源与使用
 
-模板资源位于本 skill 的 `assets/beamer/`。Course Copilot 会提供可用模板资源目录的绝对路径。
+模板资源位于本 skill 的 `assets/beamer/`。VeryMath 智慧教材会提供可用模板资源目录的绝对路径。
 
 1. 将 `assets/beamer/preamble.tex` 复制到当前课件项目根目录。
 2. 将所选 `assets/beamer/themes/<模板ID>.tex` 复制到当前项目的 `theme.tex`。公共设置通过 `\input{theme.tex}` 加载版式。
