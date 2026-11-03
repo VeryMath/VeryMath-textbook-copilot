@@ -1,13 +1,13 @@
 # VeryMath 智慧教材
 
-个人部署的课程学习工作台：左侧阅读教材，右侧与 Copilot 交互。导入自己的教材 PDF，连接一个 LLM API，就能针对任意章节提问、讲解、出题，并生成思维导图、知识图谱和 LaTeX 课件。所有数据保存在你自己的电脑上，使用你自己的 API 账号。
+个人部署的课程学习工作台：左侧阅读教材，右侧与 Copilot 交互。导入自己的教材 PDF，连接一个 LLM API，就能针对任意章节提问、讲解、出题，并生成思维导图、知识图谱和 LaTeX 课件。模型服务使用你自己的 API 账号。
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.13.0-green.svg)](https://nodejs.org)
 
 ## 特性
 
-- **个人部署**：本地 HTTP 服务 + 浏览器界面，教材与课程记录不离开本机。
+- **个人部署**：本地 HTTP 服务 + 浏览器界面，教材和课程记录保存在本机；使用远程模型服务时，本轮所需的教材片段、图片及对话上下文会发送到所选服务。
 - **桌面版开箱即用**：macOS（Apple Silicon）和 Windows 均提供安装包，自带运行环境，无需手动安装 Node.js 或命令行工具。
 - **接入你已有的 LLM**：内置支持 Anthropic、OpenAI、Google、DeepSeek 等常见 Provider，也支持自定义 OpenAI 兼容接口；在「工作区设置」中填入 API Key 即可连接。
 - **内置课程 Skill**：教材解析、讲解、知识点出题、思维导图、知识图谱、LaTeX Beamer 课件随项目提供；讲解视频可接入自定义 Skill。
