@@ -12,7 +12,7 @@ interface Props {
 const groups = [
   { name: '讲解与问答', owner: '同学 A', ids: ['textbook-parse', 'explain', 'quiz'] },
   { name: '知识结构', owner: '同学 B', ids: ['mindmap', 'knowledge-graph'] },
-  { name: '课件与视频', owner: '同学 C', ids: ['slides', 'video'] },
+  { name: '课件', owner: '同学 C', ids: ['slides'] },
 ];
 
 export default function AgentConnection({ status, active, busy, onChange }: Props) {
@@ -122,7 +122,7 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
           <input type={showKey ? 'text' : 'password'} aria-label="API Key" value={apiKey} disabled={locked} onChange={event => setApiKey(event.target.value)} placeholder="sk-..." autoComplete="off" spellCheck={false}/>
           <button type="button" className="text-button" onClick={() => setShowKey(v => !v)} aria-label={showKey ? '隐藏' : '显示'}>{showKey ? <EyeOff size={15}/> : <Eye size={15}/>}</button>
         </span>
-        <small>从模型服务商获取 API Key，保存在本机 agent 目录中。</small>
+        <small>API Key 保存在本机，并与模型服务地址绑定。更换服务地址时，请同时填写新地址使用的 API Key。</small>
       </label>
 
       <label className="agent-field">Base URL{provider === 'custom' ? '' : '（可选）'}
@@ -160,16 +160,16 @@ export default function AgentConnection({ status, active, busy, onChange }: Prop
     {busy && <p className="agent-feedback">当前任务结束后，可以更改配置。</p>}
 
     <details className="agent-details">
-      <summary>课件编译环境<span>{status?.latex?.ready ? '依赖已找到' : '需要检查'}</span><ChevronDown size={15}/></summary>
+      <summary>课件编译环境<span>PDF 编译暂不可用</span><ChevronDown size={15}/></summary>
       <p>{status?.latex?.message || '刷新状态以检查课件编译环境。'}</p>
       {status?.latex?.engine && <p>XeLaTeX：<code>{status.latex.engine}</code></p>}
       {status?.latex?.version && <p>{status.latex.version}</p>}
-      {status?.latex && <p>{status.latex.preferredMathFonts ? '数学字体：Computer Modern 与 AMS Fonts。' : '数学字体将在生成时按编译环境检查并选择。'}</p>}
+      {status?.latex?.preferredMathFonts && <p>已找到 Computer Modern 和 AMS Fonts 数学字体。</p>}
       <button className="agent-refresh" disabled={locked} onClick={() => void perform('检查课件环境', () => getAgentStatus(), '课件编译环境已检查。')}><RefreshCw size={14}/>重新检查</button>
     </details>
 
     <details className="agent-details skill-paths">
-      <summary>接入 Skill<span>{configured} / {status?.skills.length ?? groups.reduce((total, group) => total + group.ids.length, 0)} 已配置</span><ChevronDown size={15}/></summary>
+      <summary>接入 Skill<span>{configured} / {groups.reduce((total, group) => total + group.ids.length, 0)} 已配置</span><ChevronDown size={15}/></summary>
       {groups.map(group => <fieldset key={group.name} disabled={locked}>
         <legend>{group.name}<span>{group.owner}</span></legend>
         {group.ids.map(id => {

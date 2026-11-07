@@ -3,14 +3,14 @@
 个人部署的课程学习工作台：左侧阅读教材，右侧与 Copilot 交互。导入自己的教材 PDF，连接一个 LLM API，就能针对任意章节提问、讲解、出题，并生成思维导图、知识图谱和 LaTeX 课件。模型服务使用你自己的 API 账号。
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22.13.0-green.svg)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-%3E%3D22.19.0-green.svg)](https://nodejs.org)
 
 ## 特性
 
 - **个人部署**：本地 HTTP 服务 + 浏览器界面，教材和课程记录保存在本机；使用远程模型服务时，本轮所需的教材片段、图片及对话上下文会发送到所选服务。
 - **桌面版开箱即用**：macOS（Apple Silicon）和 Windows 均提供安装包，自带运行环境，无需手动安装 Node.js 或命令行工具。
 - **接入你已有的 LLM**：内置支持 Anthropic、OpenAI、Google、DeepSeek 等常见 Provider，也支持自定义 OpenAI 兼容接口；在「工作区设置」中填入 API Key 即可连接。
-- **内置课程 Skill**：教材解析、讲解、知识点出题、思维导图、知识图谱、LaTeX Beamer 课件随项目提供；讲解视频可接入自定义 Skill。
+- **内置课程 Skill**：教材解析、讲解、知识点出题、思维导图、知识图谱、LaTeX Beamer 课件随项目提供。已有讲解视频可以在课程中播放。
 - **成品有序存放**：生成结果按类型分目录，编译与内部文件隐藏，方便直接查阅。
 
 ## 工作原理
@@ -58,7 +58,7 @@
 
 菜单「文件 → 选择课程数据目录…」可连接已有课程目录；「打开课程数据目录」可在文件管理器中查看教材与生成资料。
 
-生成 LaTeX 课件需要本机 XeLaTeX；扫描文字识别需要 Tesseract、中文语言数据及 Poppler。桌面版保留工作区设置中的环境检查和连接入口。
+课件支持文字页面和 LaTeX 源码 ZIP，PDF 隔离编译暂不可用。扫描文字识别需要 Tesseract、中文语言数据及 Poppler。
 
 源码打包命令：
 
@@ -83,7 +83,7 @@ Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模�
 
 部署步骤写在 [skills/verymath-install/SKILL.md](skills/verymath-install/SKILL.md)，Agent 拉取仓库后按这份说明执行即可。
 
-手动安装：在要部署的电脑上准备 Node.js 22.13 或更新版本，然后：
+手动安装前请准备 Node.js 22.19 或更新版本。
 
 ```bash
 git clone https://github.com/VeryMath/VeryMath-textbook-copilot.git
@@ -92,7 +92,7 @@ npm ci
 npm run build && npm start
 ```
 
-启动地址以终端输出为准（默认 `http://127.0.0.1:4173`，可用 `PORT` 改端口，默认只监听本机）。开发时可用 `npm run dev`；开发、预览与正式服务都会初始化模型服务，并共用同一份接口与个人目录。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择模型服务 Provider 并填入 API Key。
+使用终端输出的完整启动链接打开课程页面。链接中的凭据用于建立本地会话，每次重启后使用新的链接。正式服务默认端口为 `4173`，可用 `PORT` 修改。开发时可用 `npm run dev`，开发、预览与正式服务共用课程接口和个人目录。首次打开页面点击「导入教材」选择 PDF，再到「工作区设置」选择模型服务并填入 API Key。
 
 > 前端、本机文件服务与 Agent 运行在同一台部署电脑上；单独把 `dist` 传到静态托管平台无法运行 Agent。
 
@@ -163,10 +163,10 @@ Copilot 的“操作范围”适用于所有课程工具。处理连续多页时
 - **知识点出题**：生成带递进提示和参考答案的练习卡片。
 - **思维导图**：按章、节或选文生成层级知识树，节点可跳回教材页，支持保存个人补充。
 - **知识图谱**：概念与关系的可视化网络，支持概览/详细两种深度、搜索、缩放和证据跳转。
-- **生成课件**：用 LaTeX Beamer 把章节编译成 16:9 的 PDF 课件，可预览、下载 PDF 与源文件。
+- **生成课件**可以预览文字页面并下载 LaTeX Beamer 源码 ZIP。已有 PDF 课件仍可预览和下载。
 - **自由问答**：不带固定功能，按你的提问组织讲解、绘图和资料。
 
-对话、文字资料和课件共用 KaTeX 公式渲染，支持行内与独立公式。生成课件需要部署电脑有可用的 XeLaTeX、Beamer、ctex、数学宏包和中文字体；「工作区设置 → 课件编译环境」可查看缺失项并重新检查。
+对话、文字资料和课件共用 KaTeX 公式渲染，支持行内与独立公式。
 
 ## 文档
 

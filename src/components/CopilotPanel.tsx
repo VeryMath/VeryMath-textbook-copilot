@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Video, Waypoints, X, ArrowUpRight, AlertCircle, History } from 'lucide-react';
+import { ArrowUp, BookOpen, Check, ChevronDown, ClipboardList, CornerDownLeft, FileSliders, FileText, MessageCircle, Network, Plus, Quote, Sparkles, Square, Waypoints, X, ArrowUpRight, AlertCircle, History } from 'lucide-react';
 import type { Artifact, Book, Chapter, CourseReference, KnowledgeGraphDetail, Message, PageRange, Scope, SkillId, SkillInfo } from '../lib/types';
 import Markdown from './Markdown';
 import './slide-template-picker.css';
@@ -14,7 +14,6 @@ const tools = [
   { id: 'mindmap', title: '思维导图', subtitle: '梳理章节脉络', icon: Waypoints, prompt: '请将当前内容整理为层次清晰的思维导图。' },
   { id: 'knowledge-graph', title: '知识图谱', subtitle: '发现知识间的联系', icon: Network, prompt: '请梳理当前内容中的知识点，以及它们之间的关系。' },
   { id: 'slides', title: '生成课件', subtitle: '把知识变成课件', icon: FileSliders, prompt: '请根据当前内容生成适合课堂讲解的课件。' },
-  { id: 'video', title: '讲解视频', subtitle: '跟着讲解学一遍', icon: Video, prompt: '请为当前内容生成讲解视频。' },
   { id: 'chat', title: '自由问答', subtitle: '聊聊你的疑问', icon: MessageCircle, prompt: '' },
 ] as const;
 

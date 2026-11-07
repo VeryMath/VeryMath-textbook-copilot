@@ -11,32 +11,25 @@
 - `range`：只处理 `pageRange.start` 到 `pageRange.end` 的 PDF 页序，包含首尾。即使跨章也不扩大范围，按选定内容组织课件。
 - `section`：当前二级目录节及其下属内容，不扩大到整章。
 - `chapter`：当前一级目录章及其下属小节。根据目录找到下一项同级或更高层级标题，结合正文确定结束位置；同页的小节边界通过正文标题判断。
-- `book`：先核对全书目录，再逐章读取和制作，每章输出一份 PDF。
+- `book`：先核对全书目录，再逐章读取，保存文字课件与 LaTeX 源码。
 
-查阅 `textbook/outline.json` 和已提取的页面。所需正文不足时，使用本轮提供的 Node.js 教材读取工具，传入真实的 `--pdf`、`--start`、`--end` 和 `--out` 参数。读取工具的输出放在本次任务的 outputs 子目录中。通过原页图像核对公式、定理条件和图表。
+使用 `read_file` 查阅允许的教材目录，使用 `read_textbook_pages` 读取本次范围内的正文，每次最多 30 页。参数为 `start`、`end`、`images`。通过工具返回的图片核对公式、定理条件和图表。
 
 ## 源文件与编译
 
-课件分为过程文件与成品，分开放置。LaTeX 编译项目（公共设置、章节入口、小节正文、引用图片、`.aux/.log` 等过程文件）放在 `outputs/.build/slides-<本次结果ID>/`，从这里运行编译。编译出的各章 PDF 成品复制到 `outputs/slides/<本次结果ID>/`，源文件打包 ZIP 也放在 `outputs/slides/<本次结果ID>/sources.zip`。结果 JSON 的 `chapters[].url` 指向 `outputs/slides/<本次结果ID>/` 下的 PDF，`sourceUrl` 指向该目录的 `sources.zip`。修改现有课件时，读取已有资料的 `sourceUrl` 源码 ZIP，在 `.build` 下展开并编辑，重新编译后更新 `slides/<结果ID>/` 中的成品与 ZIP。
+LaTeX 项目保存到本轮指定过程目录的 `slides/` 子目录。使用 `copy_file` 复制内置模板的 `preamble.tex` 和所选主题，主题文件保存为 `theme.tex`；使用 `write_file` 编写入口与正文。成品保存到 `outputs/slides/<本次结果ID>/`。修改已有课件时，使用 `extract_sources` 展开明确选定的源码 ZIP，修改后生成本次成品，保留原文件。
 
-应用会检查本机 XeLaTeX、模板宏包、Fandol 中文字体和首选数学字体，并在任务中提供引擎路径与缺失项目。依据检查结果准备编译，实际运行编译器后核对日志和 PDF。
+源码使用 Beamer、ctex 和适合教材公式的数学宏包，中文字体采用 Fandol。应用显示的编译依赖信息可供用户在独立受控环境中处理源码。
 
-使用本机已安装的 XeLaTeX，查找顺序为 PATH、macOS 的 `/Library/TeX/texbin/xelatex`。使用 Beamer、ctex 和适合教材公式的数学宏包。中文字体可以采用 TeX Live 自带的 Fandol 字体。依赖缺失时说明缺少的程序或宏包，并保存已完成的源文件供继续处理。
+当前 PDF 隔离编译暂不可用。交付 `slides:[{title,content}]` 文字课件，并保存 LaTeX 源码与源码 ZIP。明确说明没有执行 PDF 编译，禁止改用终端或其他程序执行编译器。
 
-从 LaTeX 项目根目录直接运行 XeLaTeX。下列命令中的入口文件名按当前章节调整；引擎使用实际找到的可执行文件路径：
+通过 `read_file` 检查源码；已有且明确选定的 PDF 可使用 `read_pdf_pages` 查看。
 
-```bash
-xelatex -no-shell-escape -interaction=nonstopmode -halt-on-error -file-line-error chapter-03.tex
-xelatex -no-shell-escape -interaction=nonstopmode -halt-on-error -file-line-error chapter-03.tex
-```
-
-检查日志中的错误、未解析引用、缺失字形和内容溢出，修改后重新编译至目录、书签和引用稳定。使用教材读取工具读取生成 PDF 的全部页面并检查渲染图像，或使用已安装的 PDF 渲染工具完成同样的逐页检查。较长推导按逻辑步骤拆成连续页面。
-
-将入口 `.tex`、小节正文、公共设置、所用图片打包为一个 ZIP 文件，保存为当前任务目录中的 `sources.zip`。打包内容以项目根目录为基准，使用相对路径，并包含源码实际引用的资源。使用本机可用的 ZIP 工具或标准库完成打包。
+调用 `package_sources`，将项目 `directory` 打包至 `outputs/slides/<本次结果ID>/sources.zip`，该工具保留项目内的相对路径。
 
 ## 结果返回
 
-沿用应用的 `slides` 结果类型。每个已编译章节在 `chapters` 中对应一个条目，`url` 指向 `outputs/slides/<结果ID>/` 下实际生成的 PDF 成品；`sourceUrl` 指向同目录的源文件 ZIP。单章任务也使用这套格式。路径可使用 outputs 下的绝对路径，或相对于 outputs 的路径。
+使用应用的 `slides` 结果类型，正文保存在 `slides` 数组中，`sourceUrl` 指向本次源文件 ZIP。文件路径使用 outputs 下的绝对路径，或相对于 outputs 的路径。
 
 ```json
 {
@@ -44,18 +37,17 @@ xelatex -no-shell-escape -interaction=nonstopmode -halt-on-error -file-line-erro
   "title": "教材名称：所选章节课件",
   "kind": "slides",
   "templateId": "navy",
-  "chapters": [
+  "slides": [
     {
       "title": "第 3 章 梯度方法",
-      "url": "slides/本次结果ID/第03章-梯度方法.pdf",
-      "filename": "第03章-梯度方法.pdf"
+      "content": "根据本轮教材组织的课件正文。"
     }
   ],
   "sourceUrl": "slides/本次结果ID/sources.zip"
 }
 ```
 
-将真实结果写入本轮指定的 JSON 路径，使用指定 ID 和实际标题、文件路径。应用负责课程文件地址转换、保存、章节切换和 PDF 预览。
+将结果写入本轮指定的 JSON 路径，使用指定 ID、标题和文件路径。应用负责课程文件地址转换、保存和课件展示。
 
 全部目标章节完成后发布对应结果。发生中断或编译失败时，在回答中说明实际完成范围和失败原因；继续任务时检查本次已有文件并完成后续章节。需要交付部分成果时，在结果标题及回答中清楚标出对应章节范围。
 

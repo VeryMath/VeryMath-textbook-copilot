@@ -2,7 +2,7 @@
 
 ## 环境和依赖
 
-在项目根目录检查 git --version、node --version、npm --version，并读取 package.json。当前项目要求 Node.js >=22.13.0。macOS、Linux 可按本机环境安装；原生 Windows 优先使用已有 WSL2，在 WSL 内完成安装、构建和服务运行，不混用 Windows 的 node_modules。没有 WSL2 时说明需要的系统操作，不能声称已验证原生 Windows。
+在项目根目录检查 git --version、node --version、npm --version，并读取 package.json。当前项目要求 Node.js 22.19 或更新版本。macOS、Linux 可按本机环境安装。Windows 使用已有 WSL2 时，在 WSL 内完成安装、构建和服务运行。
 
 优先使用用户已有的兼容 Node；不足时用已有版本管理器提供项目所需版本。没有可用管理工具时按平台查阅官方安装方法，不使用不明的一键安装脚本。不将开发者机器上的缓存路径写入配置或说明。
 
@@ -10,9 +10,7 @@
 
 PDF 图像支持由 PDF.js 的可选依赖提供。可检查实际安装中的 pdfjs-dist 和 @napi-rs/canvas 是否可加载；有真实 PDF 时使用教材解析 Skill 的 read-pages.mjs 读取指定页，--images pages 同时验证原页图像。没有 PDF 时不把依赖加载成功说成教材解析已验证。
 
-课件环境从 GET /api/agent/status 的 latex 读取，包括 ready、engine、missing、message。缺少 XeLaTeX 或宏包字体时，基础工作台仍能运行。用户需要课件时再按该列表补齐 TeX 环境；基础部署不默认下载体积很大的完整 TeX 发行版。Python、视频工具也按实际 Skill 需要安装。
-
-补齐 TeX 或视频工具后，必须重新读取 GET /api/agent/status 的 latex 字段，确认 ready 为 true 且 missing 为空，才能把课件环境说成就绪；中文字体（如 Fandol）缺失时尤其要核对是否在补装清单内。补齐失败或未重查时，只报告仍缺哪些及下一步，不声称已就绪。
+课件支持文字页面和 LaTeX 源码 ZIP。GET /api/agent/status 的 latex 字段会说明 PDF 隔离编译的可用状态。
 
 ## 正式启动
 
@@ -28,6 +26,7 @@ npm start
 POSIX 后台运行可直接使用下列形式，将路径和端口替换为实际值，先创建日志目录。所有带空格的路径完整引用。
 
 ```bash
+umask 077
 HOST=127.0.0.1 PORT=4173 COURSE_COPILOT_HOME="$HOME/.course-copilot" nohup node server/index.mjs > "$HOME/.course-copilot/server.log" 2>&1 < /dev/null &
 ```
 
@@ -39,7 +38,7 @@ HOST=127.0.0.1 PORT=4173 COURSE_COPILOT_HOME="$HOME/.course-copilot" nohup node 
 
 ## 本机配置 API
 
-以下接口均在实际启动地址下调用；本机请求绕过代理。写请求使用 Content-Type: application/json，检查 HTTP 状态和响应内容。仅输出必要状态，不转储账号配置或凭据。
+浏览器使用终端输出的完整启动链接。本机命令行接口请求使用环回地址与服务端口，在 Authorization 请求头中使用 Bearer 凭据，其值来自启动链接的 access 参数。配置请求使用 application/json。启动链接和含有该链接的日志应仅供本机用户查看。
 
 | 接口 | 用途 |
 | --- | --- |

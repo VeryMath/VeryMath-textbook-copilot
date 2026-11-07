@@ -33,16 +33,16 @@
 
 - `initModelRuntime()` 在服务启动时创建 pi-coding-agent 的 `ModelRuntime`，指向 `<数据目录>/agent/` 下的 `auth.json`、`models.json` 与 `models-store.json`。
 - `getPiAgentStatus()`、`configureProvider()`、`listModels()` 供设置页读写服务商、API Key、Base URL、模型与 Skill 路径。
-- `runPiAgent()` 用 `modelRuntime.getModel(provider, model)` 读取含地址覆盖的模型，再用 `createAgentSession()` 创建会话：`cwd` 为当前课程目录，同时注入模型运行时、内置工具与自定义工具；Windows 使用 PowerShell，其他平台使用 Bash。`SessionManager.inMemory()` 让 pi 会话不落盘，`SettingsManager.inMemory({ compaction: { enabled: false } })` 关闭自动压缩。
-- 课程要求与 Skill 通过 `DefaultResourceLoader` 注入：`systemPromptOverride` 提供 `server/prompts/course-tutor.md` 与本次任务说明，`skillsOverride` 追加「接入 Skill」中可读的 `SKILL.md`。
+- `runPiAgent()` 选定模型并核对模型地址与凭据后，通过 `createAgentSession()` 创建内存会话。会话仅注册 `createPiTools()` 提供的课程工具。
+- `createCourseResourceLoader()` 提供课程任务说明和允许读取的 Skill，关闭额外配置、扩展和上级目录说明的加载。
 - 会话事件转换成本应用的流式事件：`message_update` 的 `text_delta` 转为 `text`，`tool_execution_start`／`tool_execution_end` 转为 `progress`；任务结束时检查本次待检查 JSON 是否产出资料。
 - 同一时刻只允许一个任务；点击停止或请求中断时调用 `session.abort()`。
 
 每次课程请求创建独立的内存会话，任务结束后不保留 pi 侧会话状态；课程对话始终由本应用写入个人课程目录的 `conversations/`。未配置 Skill 时仍可正常自由问答、绘图和生成资料。
 
-模型凭据由 pi 的 ModelRuntime 读取：各服务商的 API Key 都保存在 `<数据目录>/agent/auth.json`（0600），重新保存「自定义 API」配置（会重建运行时）或重启服务后无需重新填写。个人设置中的 `agent` 字段只记录当前服务商、模型与 Skill 路径；各服务商的 Base URL 保存在 `agent/models.json`。复制本项目或单本课程目录不会带走 API Key，复制完整个人数据目录则会保留已保存的 Key。
+模型凭据保存在 `<数据目录>/agent/auth.json`，每条 API Key 记录与模型地址的协议、主机和端口绑定。个人设置中的 `agent` 字段记录当前服务商、模型与 Skill 路径，各服务商的 Base URL 保存在 `agent/models.json`。升级后，自定义地址需要重新保存 API Key。
 
-所有模型服务收到相同的课程上下文，并被要求只在该课程的 `outputs` 中保存结果。Agent 持有内置的文件与命令工具，工作目录是当前课程目录，因此可以读取教材、运行脚本和编译 LaTeX；这是使用约定，不是操作系统级文件沙箱。
+课程工具在服务端检查所选资料、教材页码和文件路径。生成内容写入本次任务的目录，工具只调用固定的 PDF 读取程序。课件支持文字页面和源码 ZIP。
 
 ## 课程任务的数据流
 
