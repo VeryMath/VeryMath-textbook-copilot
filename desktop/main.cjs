@@ -9,6 +9,7 @@ app.setName('VeryMath');
 let window;
 let service;
 let serviceUrl;
+let serviceLaunchUrl;
 let dataDirectory;
 let quitting = false;
 let stopped = false;
@@ -70,7 +71,16 @@ async function startService() {
     const failed = error => finish(error);
     const exited = code => finish(new Error(`课程服务启动失败（退出代码 ${code}），请查看运行日志。`));
     const ready = message => {
-      if (message?.type === 'ready' && Number.isInteger(message.port) && message.port > 0) finish(null, `http://127.0.0.1:${message.port}`);
+      if (message?.type === 'ready' && Number.isInteger(message.port) && message.port > 0) {
+        const url = typeof message.url === 'string' && URL.canParse(message.url) ? new URL(message.url) : null;
+        if (!url || url.protocol !== 'http:' || !/^course-[a-f0-9]{32}\.localhost$/.test(url.hostname)
+            || Number(url.port || 80) !== message.port || url.pathname !== '/' || url.username || url.password || url.hash
+            || url.searchParams.size !== 1 || !/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('access') || '')) {
+          finish(new Error('课程服务未提供有效的启动链接。'));
+          return;
+        }
+        finish(null, message.url);
+      }
     };
     function finish(error, url) {
       clearTimeout(timeout);
@@ -107,7 +117,7 @@ async function createWindow() {
   window.once('ready-to-show', () => window.show());
   window.on('close', event => { if (!quitting) { event.preventDefault(); window.hide(); } });
   window.on('closed', () => { window = undefined; });
-  await window.loadURL(serviceUrl);
+  await window.loadURL(serviceLaunchUrl);
 }
 
 function showWindow() {
@@ -145,7 +155,8 @@ if (!app.requestSingleInstanceLock()) {
     }
     log = createWriteStream(join(app.getPath('logs'), 'course-service.log'), { flags: 'a', mode: 0o600 });
     log.on('error', error => console.error('日志写入失败：', error.message));
-    serviceUrl = await startService();
+    serviceLaunchUrl = await startService();
+    serviceUrl = new URL(serviceLaunchUrl).origin;
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     const isMac = process.platform === 'darwin';

@@ -9,6 +9,7 @@ import { handleCourseApi } from './course-api.mjs';
 import { createGeneratedArtifactSaver, getCoursePaths, outputUrl } from './course-store.mjs';
 import { pageRangeError } from '../shared/page-range.mjs';
 import { slideTemplates } from './slide-templates.mjs';
+import { requireContentType } from './http-security.mjs';
 
 const pdfAssetsRoot = fileURLToPath(new URL('../node_modules/pdfjs-dist/', import.meta.url));
 
@@ -207,7 +208,7 @@ async function handleApi(req, res, next) {
   }
   if (pathname === '/api/agent/configure') {
     if (req.method !== 'POST') throw new HttpError(405, '此地址仅支持 POST。');
-    if (!req.headers['content-type']?.includes('application/json')) throw new HttpError(415, '请以 JSON 格式发送请求。');
+    requireContentType(req, 'application/json');
     return sendJson(res, 200, await configureAgent(await readBody(req)));
   }
   if (pathname === '/api/agent/models') {
@@ -219,7 +220,7 @@ async function handleApi(req, res, next) {
   if (assetMatch) return servePdfAsset(req, res, assetMatch[1], assetMatch[2]);
   if (pathname === '/api/agent/run') {
     if (req.method !== 'POST') throw new HttpError(405, '运行 Coding Agent 请使用 POST。');
-    if (!req.headers['content-type']?.includes('application/json')) throw new HttpError(415, '请以 JSON 格式发送请求。');
+    requireContentType(req, 'application/json');
     const request = await readBody(req);
     checkRequest(request);
     const status = await getAgentStatus();
@@ -234,9 +235,12 @@ async function handleApi(req, res, next) {
 }
 
 // Vite 开发服务与 Node 正式服务共用这一份接口。
-export function createApiMiddleware() {
+export function createApiMiddleware(access) {
+  if (!access || typeof access.check !== 'function') throw new Error('课程接口缺少本机访问检查。');
   return (req, res, next = () => sendJson(res, 404, { error: '没有找到这个地址。' })) => {
-    void handleApi(req, res, next).catch((error) => {
+    void (async () => {
+      if (access.check(req, res)) await handleApi(req, res, next);
+    })().catch((error) => {
       if (res.headersSent) {
         if (!res.destroyed) res.destroy();
         return;

@@ -6,9 +6,11 @@ import { extname, resolve, sep } from 'node:path';
 import { createApiMiddleware, disposeAgent } from './api.mjs';
 import { initModelRuntime } from './agent.mjs';
 import { getStorageInfo, disposeReferenceExtractions } from './course-store.mjs';
+import { createLocalAccess } from './http-security.mjs';
 
 const distPath = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
-const api = createApiMiddleware();
+const access = createLocalAccess();
+const api = createApiMiddleware(access);
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -76,6 +78,7 @@ const server = createServer((req, res) => {
 });
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || '127.0.0.1';
+if (!['127.0.0.1', 'localhost', '::1'].includes(host)) throw new Error('课程服务只能监听 127.0.0.1、localhost 或 ::1。');
 server.once('close', disposeAgent);
 process.once('exit', disposeAgent);
 let closing = false;
@@ -98,15 +101,18 @@ async function boot() {
   await initModelRuntime(directory);
   server.listen(port, host, () => {
     const actualPort = server.address().port;
-    console.log(`课程工作台：http://${host}:${actualPort}`);
-    process.send?.({ type: 'ready', port: actualPort });
+    const url = access.launchUrl(server.address());
+    if (process.send) process.send({ type: 'ready', port: actualPort, url });
+    else console.log(`课程工作台：${url}`);
   });
 }
 void boot().catch(error => {
   console.error(`启动失败：${error.message}`);
   process.exitCode = 1;
+  if (process.connected) process.disconnect();
 });
 server.on('error', (error) => {
   console.error(`启动失败：${error.message}`);
   process.exitCode = 1;
+  if (process.connected) process.disconnect();
 });

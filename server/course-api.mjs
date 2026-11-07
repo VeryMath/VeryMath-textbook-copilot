@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname } from 'node:path';
+import { requireContentType } from './http-security.mjs';
 import {
   getStorageInfo, updateSettings, listCourses, importCourse, getState, saveState,
   updateTextbook, savePage, resolveCourseFile, listConversations, getConversation, migrateState,
@@ -22,7 +23,7 @@ function decode(value) {
 }
 
 function body(req) {
-  if (!req.headers['content-type']?.includes('application/json')) fail(415, '请以 JSON 格式发送请求。');
+  requireContentType(req, 'application/json');
   return new Promise((accept, reject) => {
     let size = 0;
     let failed = false;
@@ -60,6 +61,9 @@ async function serveFile(req, res, path, filename) {
     const disposition = /\.(pdf|txt|md|png|jpe?g|webp)$/i.test(filename) ? 'inline' : 'attachment';
     headers['Content-Disposition'] = `${disposition}; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16)}`)}`;
     headers['Content-Security-Policy'] = "sandbox; default-src 'none'";
+  }
+  if (extname(path).toLowerCase() === '.svg') {
+    headers['Content-Security-Policy'] = "sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
   }
   let start = 0;
   let end = info.size - 1;
@@ -102,7 +106,7 @@ export async function handleCourseApi(req, res) {
       method(req, 'GET', 'POST');
       if (req.method === 'GET') json(res, 200, await listCourses());
       else {
-        if (!req.headers['content-type']?.includes('application/pdf')) fail(415, '请上传 PDF 文件。');
+        requireContentType(req, 'application/pdf');
         if (Number(req.headers['content-length']) > 100 * 1024 * 1024) { req.resume(); fail(413, '教材超过了 100 MB，请压缩 PDF 后重试。'); }
         const filename = decode(typeof req.headers['x-filename'] === 'string' ? req.headers['x-filename'] : '教材.pdf');
         json(res, 201, await importCourse(req, filename, url.searchParams.get('legacyId') ?? undefined));
@@ -132,6 +136,7 @@ export async function handleCourseApi(req, res) {
           if (req.method === 'GET') json(res, 200, await listReferences(id));
           else {
             try {
+              requireContentType(req, 'application/octet-stream');
               if (Number(req.headers['content-length']) > 100 * 1024 * 1024) fail(413, '单份辅助资料最大 100 MiB（104857600 字节）。');
               const filename = decode(typeof req.headers['x-filename'] === 'string' ? req.headers['x-filename'] : '');
               const reference = await importReference(id, req, filename);
