@@ -13,6 +13,8 @@ import ArtifactViewer, { MaterialsLibrary } from './components/ArtifactViewer';
 import AgentConnection from './components/AgentConnection';
 import CourseReferences from './components/CourseReferences';
 import { useColumnWidths } from './components/ColumnResizers';
+import { useVersionUpdates } from './lib/useVersionUpdates';
+import { VersionUpdateNotice, VersionUpdateSettings } from './components/VersionUpdates';
 
 type ReaderSection = 'materials' | 'mindmaps' | 'knowledge-graphs' | 'quizzes' | 'slides';
 // 独立成标签的类型不再进入「学习资料」总览。
@@ -27,6 +29,7 @@ function sectionKind(section: ReaderSection): SectionKind | undefined {
 
 export default function App() {
   const workspace = useCourseWorkspace();
+  const updates = useVersionUpdates();
   const { book, setBook, courses, setCourses, reading, setReading, bootError } = workspace;
   const { page, bookmarks, messages, artifacts } = reading;
   const updateReading = useCallback(<K extends keyof ReadingState>(key: K, value: SetStateAction<ReadingState[K]>) => {
@@ -276,6 +279,7 @@ export default function App() {
       <input ref={fileInput} type="file" accept="application/pdf,.pdf" hidden onChange={event=>void importBook(event.target.files?.[0])}/>
     </header>
 
+    <VersionUpdateNotice updates={updates}/>
     {(workspace.saveError || workspace.warnings.length > 0) && <div className="storage-warning" role="alert"><AlertCircle size={16}/><span>{workspace.saveError || workspace.warnings.join(' ')}</span>{workspace.saveError && <button onClick={() => void workspace.flush().catch(() => {})}>重试保存</button>}</div>}
     <nav className="mobile-tabs" aria-label="切换工作区域"><button className={mobileView==='reader'?'active':''} onClick={()=>setMobileView('reader')}><BookOpen size={16}/>教材阅读</button><button className={mobileView==='copilot'?'active':''} onClick={()=>setMobileView('copilot')}><Sparkles size={16}/>Copilot</button></nav>
 
@@ -325,6 +329,7 @@ export default function App() {
       <div className="dialog-body"><span className="eyebrow">YOUR COURSE ASSISTANT</span><h2>连接你的课程助手</h2>
         <p className="dialog-intro">接上本机 Agent，让它陪你读教材、回答问题、制作学习资料。</p>
         <AgentConnection status={agentStatus} active={showSettings} busy={busy} onChange={updateAgentStatus}/>
+        <VersionUpdateSettings updates={updates}/>
         <section className="storage-location"><h3><FolderOpen size={17}/>个人数据目录</h3><code>{workspace.directory || '正在读取保存位置…'}</code><p>教材、阅读记录、对话和生成资料保存在这里。连接设置也保存在这个文件夹里。</p></section>
       </div>
     </dialog>

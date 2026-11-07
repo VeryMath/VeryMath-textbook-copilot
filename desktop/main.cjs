@@ -15,6 +15,8 @@ let quitting = false;
 let stopped = false;
 let log;
 let configPath;
+let updater;
+let pendingInstaller;
 
 function localUrl(value) {
   try { return new URL(value).origin === serviceUrl; } catch { return false; }
@@ -43,6 +45,7 @@ function protectContents(contents) {
   contents.on('did-create-window', reader => { reader.show(); reader.focus(); });
   contents.on('will-prevent-unload', () => {
     quitting = false;
+    pendingInstaller = undefined;
     dialog.showErrorBox('课程正在保存', '请等待页面显示“已保存到本机”后再退出。保存失败时，可在页面点击重试保存。');
   });
 }
@@ -131,12 +134,26 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
   app.on('activate', showWindow);
   app.on('web-contents-created', (_event, contents) => protectContents(contents));
-  app.on('before-quit', () => { quitting = true; });
+  app.on('before-quit', () => { quitting = true; updater?.cancelForQuit(); });
   app.on('will-quit', event => {
     if (stopped) return;
     event.preventDefault();
     stopped = true;
-    void stopService().finally(() => { log?.end(); app.quit(); });
+    updater?.stop();
+    const installer = pendingInstaller;
+    pendingInstaller = undefined;
+    void (async () => {
+      await stopService();
+      if (installer && process.platform === 'win32') {
+        const { verifyDownloadedAsset } = await import('./update/download.mjs');
+        await verifyDownloadedAsset(installer.path, installer.asset);
+        const error = await shell.openPath(installer.path);
+        if (error) throw new Error(`安装程序打开失败：${error}`);
+      }
+    })().catch(error => {
+      dialog.showErrorBox('更新安装未完成', error.message);
+      if (installer) shell.showItemInFolder(installer.path);
+    }).finally(() => { log?.end(); app.quit(); });
   });
   process.on('exit', () => { if (service?.exitCode === null) service.kill('SIGTERM'); });
   void app.whenReady().then(async () => {
@@ -173,10 +190,26 @@ if (!app.requestSingleInstanceLock()) {
     template.push({ label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' }, { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] });
     template.push({ label: '视图', submenu: [{ role: 'reload', label: '重新载入' }, { role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }, { role: 'togglefullscreen', label: '全屏' }] });
     template.push({ label: '窗口', submenu: [{ role: 'minimize', label: '最小化' }, ...(isMac ? [{ role: 'zoom', label: '缩放' }] : []), { label: '显示教材窗口', click: showWindow }, ...(isMac ? [{ role: 'front', label: '全部置于顶层' }] : [])] });
-    if (!isMac) template.push({ label: '帮助', submenu: [{ label: '关于 VeryMath', click: () => app.showAboutPanel() }, { type: 'separator' }, { label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) }, { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') }] });
-    if (isMac) template.push({ label: '帮助', submenu: [{ label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) }, { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') }] });
+    template.push({ label: '帮助', submenu: [
+      ...(!isMac ? [{ label: '关于 VeryMath', click: () => app.showAboutPanel() }, { type: 'separator' }] : []),
+      { id: 'check-updates', label: '检查更新…', click: () => void updater?.check(true) },
+      { id: 'cancel-update-download', label: '取消更新下载', enabled: false, click: () => updater?.cancelDownload() },
+      { type: 'separator' },
+      { label: '查看运行日志', click: () => void shell.openPath(app.getPath('logs')) },
+      { label: '项目主页', click: () => openExternal('https://github.com/VeryMath/VeryMath-textbook-copilot') },
+    ] });
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    const { createDesktopUpdater } = await import('./update/controller.mjs');
+    updater = createDesktopUpdater({ getWindow: () => window, showWindow, getServiceLaunchUrl: () => serviceLaunchUrl,
+      isClosing: () => quitting || stopped,
+      queueWindowsInstaller: installer => {
+        if (quitting || stopped) return;
+        pendingInstaller = { ...installer, asset: { ...installer.asset } };
+        app.quit();
+      },
+    });
     await createWindow();
+    updater.start();
   }).catch(async error => {
     dialog.showErrorBox('VeryMath 启动失败', error.message);
     quitting = true;

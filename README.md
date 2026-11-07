@@ -51,6 +51,8 @@
 
 下载地址见 [Releases](https://github.com/VeryMath/VeryMath-textbook-copilot/releases)。
 
+打包后的桌面版启动时会检查 GitHub 的正式版本，运行期间每六小时检查一次，也可以从「帮助 → 检查更新」立即检查。发现适合当前系统的新版本时，应用会询问是否下载，校验通过后再询问是否打开安装入口。网页版会显示新版本和官方发布页链接。
+
 启动后，前往「工作区设置」选择模型服务 Provider 并填入 API Key，选择模型后即可开始提问。默认课程目录：
 
 - macOS：`~/.course-copilot`

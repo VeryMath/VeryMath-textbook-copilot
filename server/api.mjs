@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { realpath, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
@@ -10,14 +10,36 @@ import { createGeneratedArtifactSaver, getCoursePaths, outputUrl } from './cours
 import { pageRangeError } from '../shared/page-range.mjs';
 import { slideTemplates } from './slide-templates.mjs';
 import { requireContentType } from './http-security.mjs';
+import { checkForUpdate } from '../shared/release-updates.mjs';
 
 const pdfAssetsRoot = fileURLToPath(new URL('../node_modules/pdfjs-dist/', import.meta.url));
+const { version: currentVersion } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const managedByDesktop = Boolean(process.send && process.env.ELECTRON_RUN_AS_NODE === '1');
+const updateInterval = 6 * 60 * 60 * 1000;
+let updateResult;
+let updateCheckedAt = 0;
+let updateInFlight;
 
 class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
   }
+}
+
+async function getUpdate(refresh) {
+  if (managedByDesktop) return { currentVersion, managedByDesktop: true };
+  if (updateResult && Date.now() - updateCheckedAt < (refresh ? 60000 : updateInterval)) return updateResult;
+  if (!updateInFlight) {
+    updateInFlight = checkForUpdate(currentVersion).then(result => {
+      updateCheckedAt = Date.now();
+      updateResult = { ...result, managedByDesktop: false, checkedAt: new Date(updateCheckedAt).toISOString() };
+      return updateResult;
+    }).catch(error => {
+      throw new HttpError(502, `版本检查失败：${error instanceof Error ? error.message : String(error)}`);
+    }).finally(() => { updateInFlight = undefined; });
+  }
+  return updateInFlight;
 }
 
 function sendJson(res, status, value) {
@@ -198,6 +220,11 @@ async function handleApi(req, res, next) {
   if (!pathname.startsWith('/api/')) return next();
   if (await handleCourseApi(req, res)) return;
 
+  if (pathname === '/api/update') {
+    if (req.method !== 'GET') throw new HttpError(405, '版本检查仅支持 GET。');
+    const refresh = new URL(req.url, 'http://localhost').searchParams.get('refresh') === '1';
+    return sendJson(res, 200, await getUpdate(refresh));
+  }
   if (pathname === '/api/skills') {
     if (req.method !== 'GET') throw new HttpError(405, '此地址仅支持 GET。');
     return sendJson(res, 200, getSkillAvailability(await getAgentStatus()));

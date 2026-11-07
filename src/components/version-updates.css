@@ -1,0 +1,21 @@
+.version-update-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  gap: 8px 12px;
+  padding: 8px 24px;
+  color: var(--text);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--accent-border);
+  font-size: 12px;
+}
+.version-update-notice > span { flex: 1; min-width: 180px; }
+.version-update-notice a { display: inline-flex; align-items: center; gap: 6px; }
+.version-update-settings { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+.version-update-settings h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 14px; }
+.version-update-settings p { margin: 9px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.version-update-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 12px 0; }
+.version-update-settings .version-update-error { color: var(--accent); }
+.version-update-settings .version-update-checked { color: var(--muted); font-size: 11px; }
+@media (max-width: 700px) { .version-update-notice { padding: 8px 14px; } }
