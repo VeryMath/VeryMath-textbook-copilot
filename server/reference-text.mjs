@@ -6,6 +6,20 @@ import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { openPromise } from 'yauzl';
+import { SaxesParser } from 'saxes';
+
+const OFFICE_ENTRY_BYTES = 32 * 1024 * 1024;
+const OFFICE_TOTAL_BYTES = 128 * 1024 * 1024;
+const OFFICE_TIMEOUT_MS = 120000;
+const OFFICE_ENTRY_COUNT = 10000;
+const OFFICE_XML_DEPTH = 256;
+const OFFICE_TEXT_BLOCKS = 100000;
+const officeNamespaces = {
+  word: new Set(['http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'http://purl.oclc.org/ooxml/wordprocessingml/main']),
+  drawing: new Set(['http://schemas.openxmlformats.org/drawingml/2006/main', 'http://purl.oclc.org/ooxml/drawingml/main']),
+  presentation: new Set(['http://schemas.openxmlformats.org/presentationml/2006/main', 'http://purl.oclc.org/ooxml/presentationml/main']),
+  relationship: new Set(['http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'http://purl.oclc.org/ooxml/officeDocument/relationships']),
+};
 
 const execute = promisify(execFile);
 async function command(name, args, signal) {
@@ -16,47 +30,122 @@ async function command(name, args, signal) {
     throw new Error(`${name} 处理失败：${String(error.stderr || error.message).slice(0, 400)}`);
   }
 }
-function xmlText(xml) {
-  return [...xml.matchAll(/<(?:w|a):t(?:\s[^>]*)?>([\s\S]*?)<\/(?:w|a):t>/g)].map(match => match[1]
-    .replace(/&#x([\da-f]+);/gi, (_, number) => String.fromCodePoint(parseInt(number, 16)))
-    .replace(/&#(\d+);/g, (_, number) => String.fromCodePoint(Number(number)))
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&')).join('');
-}
-async function readOfficeXml(path, format, signal) {
-  const archive = await openPromise(path);
-  const files = new Map();
+async function withOfficeXml(path, format, signal, consume) {
+  signal.throwIfAborted();
+  const timeout = new AbortController();
+  const combined = AbortSignal.any([signal, timeout.signal]);
+  const deadline = performance.now() + OFFICE_TIMEOUT_MS;
+  const timeoutError = new Error('资料提取超过 120 秒，请减少文档内容后重新导入。');
+  const timer = setTimeout(() => timeout.abort(timeoutError), OFFICE_TIMEOUT_MS);
+  let archive;
+  let stream;
+  let totalBytes = 0;
+  let rejectInterrupted;
+  const interrupted = new Promise((_resolve, reject) => { rejectInterrupted = reject; });
+  const wait = operation => Promise.race([operation, interrupted]);
+  const abort = () => {
+    stream?.destroy();
+    archive?.close();
+    rejectInterrupted(combined.reason);
+  };
+  combined.addEventListener('abort', abort, { once: true });
+  const check = () => {
+    if (performance.now() >= deadline) timeout.abort(timeoutError);
+    combined.throwIfAborted();
+  };
   try {
-    for await (const entry of archive.eachEntry()) {
-      signal.throwIfAborted();
+    archive = await wait(openPromise(path, { autoClose: false }).then(value => {
+      if (combined.aborted) value.close();
+      return value;
+    }));
+    check();
+    archive.on('error', error => timeout.abort(error));
+    if (archive.entryCount > OFFICE_ENTRY_COUNT) throw new Error('资料内部文件超过 10000 个，请减少文档内容后重新导入。');
+    const files = new Map();
+    const entries = archive.eachEntry();
+    for (let count = 0; ; count++) {
+      check();
+      const next = await wait(entries.next());
+      if (next.done) break;
+      if (count >= OFFICE_ENTRY_COUNT) throw new Error('资料内部文件超过 10000 个，请减少文档内容后重新导入。');
+      const entry = next.value;
       const needed = format === 'docx' ? entry.fileName === 'word/document.xml'
         : ['ppt/presentation.xml', 'ppt/_rels/presentation.xml.rels'].includes(entry.fileName)
           || /^ppt\/slides\/[^/]+\.xml$/.test(entry.fileName);
       if (!needed) continue;
-      if (entry.uncompressedSize > 32 * 1024 * 1024) throw new Error('资料正文过大，请拆分文件后重新导入。');
-      const stream = await archive.openReadStreamPromise(entry);
-      const abort = () => stream.destroy(signal.reason);
-      signal.addEventListener('abort', abort, { once: true });
-      if (signal.aborted) abort();
-      try {
-        const chunks = [];
-        let size = 0;
-        for await (const chunk of stream) {
-          size += chunk.length;
-          if (size > 32 * 1024 * 1024) throw new Error('资料正文过大，请拆分文件后重新导入。');
-          chunks.push(chunk);
-        }
-        files.set(entry.fileName, Buffer.concat(chunks).toString('utf8'));
-      } finally {
-        signal.removeEventListener('abort', abort);
-        stream.destroy();
-      }
+      if (files.has(entry.fileName)) throw new Error(`资料包含重复的 ${entry.fileName}，请重新导出文件。`);
+      files.set(entry.fileName, entry);
     }
-  } finally { archive.close(); }
-  signal.throwIfAborted();
-  return filename => {
-    if (!files.has(filename)) throw new Error(`资料缺少 ${filename}，请重新导出文件后导入。`);
-    return files.get(filename);
-  };
+    const readXml = async (filename, handlers) => {
+      check();
+      const entry = files.get(filename);
+      if (!entry) throw new Error(`资料缺少 ${filename}，请重新导出文件后导入。`);
+      if (entry.uncompressedSize > OFFICE_ENTRY_BYTES) throw new Error('资料单个正文文件超过 32 MiB，请减少文档内容后重新导入。');
+      if (totalBytes + entry.uncompressedSize > OFFICE_TOTAL_BYTES) throw new Error('资料正文累计超过 128 MiB，请减少文档内容后重新导入。');
+      stream = await wait(archive.openReadStreamPromise(entry).then(value => {
+        if (combined.aborted) value.destroy();
+        return value;
+      }));
+      try {
+        check();
+        const parser = new SaxesParser({ xmlns: true, fileName: filename });
+        for (const [event, handler] of Object.entries(handlers)) parser.on(event, handler);
+        let depth = 0;
+        parser.on('opentag', node => {
+          if (++depth > OFFICE_XML_DEPTH) throw new Error('资料 XML 层级超过 256 层，请重新导出文件。');
+          handlers.opentag?.(node);
+        });
+        parser.on('closetag', node => { handlers.closetag?.(node); depth--; });
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        const chunks = stream[Symbol.asyncIterator]();
+        let size = 0;
+        while (true) {
+          check();
+          const next = await wait(chunks.next());
+          if (next.done) break;
+          const chunk = next.value;
+          size += chunk.length;
+          totalBytes += chunk.length;
+          if (size > OFFICE_ENTRY_BYTES) throw new Error('资料单个正文文件超过 32 MiB，请减少文档内容后重新导入。');
+          if (totalBytes > OFFICE_TOTAL_BYTES) throw new Error('资料正文累计超过 128 MiB，请减少文档内容后重新导入。');
+          parser.write(decoder.decode(chunk, { stream: true }));
+        }
+        parser.write(decoder.decode()).close();
+        check();
+      } finally {
+        stream.destroy();
+        stream = undefined;
+      }
+    };
+    await consume(readXml, check);
+    check();
+  } finally {
+    clearTimeout(timer);
+    combined.removeEventListener('abort', abort);
+    stream?.destroy();
+    archive?.close();
+  }
+}
+async function readOfficeParagraphs(readXml, filename, namespace) {
+  const paragraphs = [];
+  const active = [];
+  let textDepth = 0;
+  await readXml(filename, {
+    opentag(node) {
+      if (node.local === 'p' && namespace.has(node.uri)) active.push([]);
+      if (node.local === 't' && (officeNamespaces.word.has(node.uri) || officeNamespaces.drawing.has(node.uri))) textDepth++;
+    },
+    text(value) { if (textDepth && active.length) active.at(-1).push(value); },
+    cdata(value) { if (textDepth && active.length) active.at(-1).push(value); },
+    closetag(node) {
+      if (node.local === 't' && (officeNamespaces.word.has(node.uri) || officeNamespaces.drawing.has(node.uri))) textDepth--;
+      if (node.local === 'p' && namespace.has(node.uri)) {
+        if (paragraphs.length >= OFFICE_TEXT_BLOCKS) throw new Error('资料单个正文文件的文本单元超过 100000 个，请减少文档内容后重新导入。');
+        paragraphs.push(active.pop().join(''));
+      }
+    },
+  });
+  return paragraphs;
 }
 async function ocrLanguage(signal) {
   const output = await command('tesseract', ['--list-langs'], signal);
@@ -77,33 +166,43 @@ export async function extractReferenceText({ path, format, ocr, signal, onProgre
     const paragraphs = text.split(/\n\s*\n/).filter(value => value.trim());
     paragraphs.forEach((text, index) => add({ paragraph: index + 1, text: text.trim(), source: 'text' }, paragraphs.length));
   } else if (format === 'docx') {
-    const readXml = await readOfficeXml(path, format, signal);
-    const xml = readXml('word/document.xml');
-    const paragraphs = [...xml.matchAll(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(match => xmlText(match[0])).filter(text => text.trim());
-    paragraphs.forEach((text, index) => add({ paragraph: index + 1, text, source: 'text' }, paragraphs.length));
+    await withOfficeXml(path, format, signal, async (readXml, check) => {
+      const paragraphs = (await readOfficeParagraphs(readXml, 'word/document.xml', officeNamespaces.word)).filter(text => text.trim());
+      paragraphs.forEach((text, index) => {
+        check();
+        add({ paragraph: index + 1, text, source: 'text' }, paragraphs.length);
+      });
+    });
     if (!pages.length) warnings.push('文档中未提取到正文。');
   } else if (format === 'pptx') {
-    const readXml = await readOfficeXml(path, format, signal);
-    const presentation = readXml('ppt/presentation.xml');
-    const relationships = readXml('ppt/_rels/presentation.xml.rels');
-    const targets = new Map([...relationships.matchAll(/<Relationship\b[^>]*>/g)].map(([tag]) => {
-      const id = /\bId="([^"]+)"/.exec(tag)?.[1];
-      const target = /\bTarget="([^"]+)"/.exec(tag)?.[1];
-      return [id, target];
-    }));
-    const files = [...presentation.matchAll(/<p:sldId\b[^>]*\br:id="([^"]+)"[^>]*>/g)].map(([, id]) => {
-      const target = targets.get(id);
-      if (!target) throw new Error('幻灯片目录缺少对应的页面文件。');
-      const file = posix.normalize(target.startsWith('/') ? target.slice(1) : 'ppt/' + target);
-      if (!/^ppt\/slides\/[^/]+\.xml$/.test(file)) throw new Error('幻灯片页面路径无效。');
-      return file;
+    await withOfficeXml(path, format, signal, async (readXml, check) => {
+      const slides = [];
+      const targets = new Map();
+      await readXml('ppt/presentation.xml', { opentag(node) {
+        if (node.local !== 'sldId' || !officeNamespaces.presentation.has(node.uri)) return;
+        const id = Object.values(node.attributes).find(attribute => attribute.local === 'id' && officeNamespaces.relationship.has(attribute.uri))?.value;
+        if (!id) throw new Error('幻灯片目录缺少页面编号。');
+        if (slides.length >= OFFICE_ENTRY_COUNT) throw new Error('幻灯片超过 10000 页，请减少页面后重新导入。');
+        slides.push(id);
+      } });
+      await readXml('ppt/_rels/presentation.xml.rels', { opentag(node) {
+        if (node.local !== 'Relationship' || node.uri !== 'http://schemas.openxmlformats.org/package/2006/relationships') return;
+        const { Id, Target, TargetMode } = node.attributes;
+        if (!Id?.value || !Target?.value) throw new Error('幻灯片关联信息不完整。');
+        if (targets.has(Id.value)) throw new Error('幻灯片包含重复的关联编号。');
+        if (targets.size >= OFFICE_ENTRY_COUNT) throw new Error('幻灯片关联项目超过 10000 个，请减少页面后重新导入。');
+        targets.set(Id.value, { target: Target.value, external: TargetMode?.value === 'External' });
+      } });
+      for (const [index, id] of slides.entries()) {
+        check();
+        const relation = targets.get(id);
+        if (!relation || relation.external) throw new Error('幻灯片目录缺少本地页面文件。');
+        const file = posix.normalize(relation.target.startsWith('/') ? relation.target.slice(1) : 'ppt/' + relation.target);
+        if (!/^ppt\/slides\/[^/]+\.xml$/.test(file)) throw new Error('幻灯片页面路径无效。');
+        const text = (await readOfficeParagraphs(readXml, file, officeNamespaces.drawing)).join('\n');
+        add({ slide: index + 1, text, source: 'text' }, slides.length);
+      }
     });
-    for (const [index, file] of files.entries()) {
-      signal.throwIfAborted();
-      const xml = readXml(file);
-      const text = [...xml.matchAll(/<a:p(?:\s[^>]*)?>[\s\S]*?<\/a:p>/g)].map(match => xmlText(match[0])).join('\n');
-      add({ slide: index + 1, text, source: 'text' }, files.length);
-    }
     if (pages.some(page => !page.text.trim())) warnings.push('部分幻灯片没有文字层，可导出为 PDF 后识别。');
   } else if (format === 'pdf') {
     const root = fileURLToPath(new URL('../node_modules/pdfjs-dist/', import.meta.url));
