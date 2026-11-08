@@ -87,7 +87,7 @@ export function createDesktopUpdater({ getWindow, showWindow, getServiceLaunchUr
       const result = await checkForUpdate(app.getVersion(), { platform: process.platform, arch: process.arch });
       if (isClosing()) return;
       if (!result.available) {
-        if (manual) await message({ type: 'info', message: `当前已是最新版本（${result.currentVersion}）。`, buttons: ['确定'] });
+        if (manual) await message({ type: 'info', message: `当前版本为 ${result.currentVersion}，暂无可用更新。`, buttons: ['确定'] });
         return;
       }
       if (!manual && offeredVersion === result.latestVersion) return;
@@ -104,9 +104,14 @@ export function createDesktopUpdater({ getWindow, showWindow, getServiceLaunchUr
         return;
       }
       const answer = await message({ type: 'question', message: `发现 VeryMath ${result.latestVersion}，是否下载？`,
-        detail: `当前版本：${result.currentVersion}\n安装包：${result.asset.name}\n大小：${(result.asset.size / 1024 / 1024).toFixed(1)} MB\n下载后会再次询问是否安装，可在帮助菜单取消下载。`,
-        buttons: ['下载更新', '稍后'], defaultId: 1, cancelId: 1 });
-      if (answer.response !== 0 || isClosing()) return;
+        detail: `当前版本：${result.currentVersion}\n安装包：${result.asset.name}\n大小：${(result.asset.size / 1024 / 1024).toFixed(1)} MB\n查看说明后，可从「帮助 → 检查更新」继续。下载后会再次询问是否安装。`,
+        buttons: ['下载更新', '查看更新说明', '稍后'], defaultId: 2, cancelId: 2 });
+      if (isClosing()) return;
+      if (answer.response === 1) {
+        await shell.openExternal(result.releaseUrl);
+        return;
+      }
+      if (answer.response !== 0) return;
       downloadController = new AbortController();
       refreshMenu();
       const path = await downloadReleaseAsset(result.asset, { directory: join(app.getPath('userData'), 'updates'), signal: downloadController.signal,

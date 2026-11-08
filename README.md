@@ -66,8 +66,8 @@
 
 | 平台 | 命令 | 产物 |
 | --- | --- | --- |
-| macOS | `npm run desktop:dist` | `release/VeryMath-0.2.2-arm64.dmg` |
-| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.2.2-windows-x64-setup.exe` |
+| macOS | `npm run desktop:dist` | `release/VeryMath-0.2.3-arm64.dmg` |
+| Windows | `npm run desktop:dist:win` | `release/VeryMath-0.2.3-windows-x64-setup.exe` |
 
 Windows 构建使用 GitHub Actions `windows-latest` runner，确保 native 模块正确安装。详见 [桌面版文档](docs/desktop.md)。
 
